@@ -1,4 +1,5 @@
 @echo off
+setlocal
 title VSBEC Academic Task Management System
 color 0A
 
@@ -8,7 +9,7 @@ echo =================================================
 echo.
 
 :: Check for Node.js
-where node >nul 2>nul
+where.exe node >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Node.js is not installed or not in PATH.
     echo [ACTION] Please install Node.js from https://nodejs.org/
@@ -33,13 +34,6 @@ if not exist "node_modules\" (
     )
 )
 
-:: Kill any existing process on port 3000 to avoid EADDRINUSE
-echo [INFO] Checking for existing server on port 3000...
-for /f "tokens=5" %%a in ('netstat -aon ^| find ":3000" ^| find "LISTENING" 2^>nul') do (
-    echo [INFO] Killing existing process %%a on port 3000...
-    taskkill /PID %%a /F >nul 2>nul
-)
-
 echo.
 echo [INFO] Starting the development server...
 echo [INFO] Once started, open your browser at: http://localhost:3000
@@ -56,9 +50,10 @@ if %ERRORLEVEL% NEQ 0 (
     echo Troubleshooting Steps:
     echo 1. Make sure MongoDB is accessible (check your .env MONGODB_URI).
     echo 2. Run 'npm install' manually in this folder.
-    echo 3. If port is in use, open Task Manager and end 'node.exe'.
+    echo 3. Check if another process is using port 3000.
     echo.
 )
 
 echo.
-pause
+echo Press any key to exit...
+pause >nul

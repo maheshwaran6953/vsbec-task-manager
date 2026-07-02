@@ -23,7 +23,7 @@ A comprehensive platform designed to streamline task assignments, submissions, a
 ## Tech Stack 🛠️
 
 *   **Frontend:** React (Vite), TypeScript, Tailwind CSS, Framer Motion, Lucide Icons.
-*   **Backend:** Node.js, Express, Better-SQLite3 (Relational DB), JWT (Authentication), Bcrypt (Security).
+*   **Backend:** Node.js, Express, MongoDB (Atlas), JWT (Authentication), Bcrypt (Security).
 *   **Storage:** Cloudinary (Screenshot/PDF Image storage integration via Multer).
 
 ## Setup & Installation 🚀
@@ -56,7 +56,7 @@ A comprehensive platform designed to streamline task assignments, submissions, a
     ```bash
     npm run dev
     ```
-    This command concurrently spins up the Vite frontend and the Express backend (`server.ts` using `tsx`). The sqlite database `database.sqlite` will be automatically created on the first run. 
+    This command concurrently spins up the Vite frontend and the Express backend (`server.ts` using `tsx`). Connection to MongoDB is established using the `MONGODB_URI` from your `.env` file.
 
     If the database is empty, a **seeder script will run** generating sample data: departments, classes, users, and tasks, alongside a dummy Supreme Admin (`admin` / `admin123`).
 

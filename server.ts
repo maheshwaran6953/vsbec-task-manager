@@ -84,6 +84,8 @@ const userSchema = new Schema({
   email: { type: String },
   register_number: { type: String, unique: true, sparse: true },
   is_coordinator: { type: Boolean, default: false },
+  is_year_coordinator: { type: Boolean, default: false },
+  year_scope: { type: Number, default: null },
   must_change_password: { type: Boolean, default: false },
   is_active: { type: Boolean, default: true },
 }, { timestamps: true });
@@ -261,6 +263,8 @@ async function startServer() {
       department_id: user.department_id,
       class_id: user.class_id,
       is_coordinator: Boolean(user.is_coordinator),
+      is_year_coordinator: Boolean(user.is_year_coordinator),
+      year_scope: user.year_scope,
     }, JWT_SECRET);
 
     res.json({
@@ -274,7 +278,26 @@ async function startServer() {
         class_id: user.class_id,
         must_change_password: user.must_change_password,
         is_coordinator: Boolean(user.is_coordinator),
+        is_year_coordinator: Boolean(user.is_year_coordinator),
+        year_scope: user.year_scope,
       }
+    });
+  });
+
+  app.get('/api/auth/me', authenticate, async (req: any, res) => {
+    const user: any = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({
+      id: user._id,
+      username: user.username,
+      role: user.role,
+      full_name: user.full_name,
+      department_id: user.department_id,
+      class_id: user.class_id,
+      must_change_password: user.must_change_password,
+      is_coordinator: Boolean(user.is_coordinator),
+      is_year_coordinator: Boolean(user.is_year_coordinator),
+      year_scope: user.year_scope,
     });
   });
 
@@ -361,7 +384,7 @@ async function startServer() {
   // ── Users ─────────────────────────────────────────────────────────────────
   app.get('/api/users', authenticate, async (req: any, res) => {
     let users: any[];
-    const selectFields = 'username role full_name email register_number is_coordinator must_change_password is_active department_id class_id';
+    const selectFields = 'username role full_name email register_number is_coordinator is_year_coordinator year_scope must_change_password is_active department_id class_id';
 
     if (req.user.role === 'SUPREME_ADMIN') {
       users = await User.find({ role: { $ne: 'SUPREME_ADMIN' } }).select(selectFields)
@@ -392,11 +415,13 @@ async function startServer() {
       department_name: u.department_id?.name,
       class_id: u.class_id?._id || u.class_id,
       class_name: u.class_id?.name,
+      is_year_coordinator: u.is_year_coordinator,
+      year_scope: u.year_scope,
     })));
   });
 
   app.post('/api/users', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), async (req: any, res) => {
-    const { username, password, role, department_id, class_id, full_name, email, register_number } = req.body;
+    const { username, password, role, department_id, class_id, full_name, email, register_number, is_year_coordinator, year_scope } = req.body;
 
     let userRole = role;
     let deptId = department_id;
@@ -423,6 +448,8 @@ async function startServer() {
         email: email?.trim() || null,
         register_number: register_number?.trim() || null,
         must_change_password: mustChange,
+        is_year_coordinator: is_year_coordinator || false,
+        year_scope: year_scope || null,
       });
       await u.save();
       res.json({ id: u._id, username, role: userRole, department_id: deptId, class_id: clsId, full_name, email, register_number });
@@ -464,6 +491,28 @@ async function startServer() {
       if (count >= 2) return res.status(400).json({ error: 'Maximum 2 coordinators allowed per class' });
     }
     await User.findOneAndUpdate({ _id: req.params.id, class_id: classId }, { is_coordinator });
+    res.json({ success: true });
+  });
+
+  app.patch('/api/users/:id/year-coordinator', authenticate, authorize(['HOD', 'SUPREME_ADMIN']), async (req: any, res) => {
+    const { is_year_coordinator, year_scope } = req.body;
+    const target: any = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+
+    // HOD can only manage users in their department
+    if (req.user.role === 'HOD' && target.department_id?.toString() !== req.user.department_id?.toString()) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    // Only CLASS_ADVISOR can be toggled as Year Coordinator (per original plan)
+    if (target.role !== 'CLASS_ADVISOR' && is_year_coordinator) {
+      return res.status(400).json({ error: 'Only Class Advisors can be assigned as Year Coordinators' });
+    }
+
+    await User.findByIdAndUpdate(req.params.id, {
+      is_year_coordinator,
+      year_scope: is_year_coordinator ? year_scope : null
+    });
     res.json({ success: true });
   });
 
@@ -531,24 +580,34 @@ async function startServer() {
 
   app.get('/api/tasks', authenticate, async (req: any, res) => {
     let queryArgs: any;
-    if (req.user.role === 'SUPREME_ADMIN') {
+    const dbUser: any = await User.findById(req.user.id);
+    if (!dbUser) return res.status(401).json({ error: 'User not found' });
+
+    if (dbUser.role === 'SUPREME_ADMIN') {
       queryArgs = {};
-    } else if (req.user.role === 'STUDENT' || req.user.role === 'CLASS_ADVISOR') {
+    } else if (dbUser.role === 'STUDENT' || dbUser.role === 'CLASS_ADVISOR') {
       queryArgs = {
         $or: [
+          { created_by: dbUser._id },
           { department_id: null, class_ids: { $size: 0 } },
-          { department_id: req.user.department_id, class_ids: { $size: 0 } },
-          { class_ids: { $in: [req.user.class_id] } },
+          { department_id: dbUser.department_id, class_ids: { $size: 0 } },
+          { class_ids: { $in: [dbUser.class_id] } },
         ]
       };
+      if (dbUser.is_year_coordinator) {
+        const yearClasses = await Class.find({ department_id: dbUser.department_id, year: dbUser.year_scope });
+        const yearClassIds = yearClasses.map(c => c._id);
+        queryArgs.$or.push({ class_ids: { $in: yearClassIds } });
+      }
     } else {
       // HOD
-      const deptClasses = await Class.find({ department_id: req.user.department_id });
+      const deptClasses = await Class.find({ department_id: dbUser.department_id });
       const deptClassIds = deptClasses.map(c => c._id);
       queryArgs = {
         $or: [
+          { created_by: dbUser._id },
           { department_id: null, class_ids: { $size: 0 } }, // Global
-          { department_id: req.user.department_id }, // Dept wide or class within dept if dept_id set
+          { department_id: dbUser.department_id }, // Dept wide or class within dept if dept_id set
           { class_ids: { $in: deptClassIds } } // Tasks for classes in this dept
         ]
       };
@@ -604,13 +663,30 @@ async function startServer() {
     if (req.user.role === 'STUDENT' && !req.user.is_coordinator)
       return res.status(403).json({ error: 'Only coordinators can post tasks' });
 
+    // Fetch latest user data to avoid stale JWT issues
+    const dbUser: any = await User.findById(req.user.id);
+    if (!dbUser) return res.status(401).json({ error: 'User not found' });
+
     let deptId = department_id;
     let clsIds = class_ids || [];
 
-    if (req.user.role === 'CLASS_ADVISOR' || (req.user.role === 'STUDENT' && req.user.is_coordinator)) {
-      deptId = req.user.department_id; clsIds = [req.user.class_id];
-    } else if (req.user.role === 'HOD') {
-      deptId = req.user.department_id;
+    // Role-based restrictions
+    if (dbUser.role === 'CLASS_ADVISOR' || (dbUser.role === 'STUDENT' && dbUser.is_coordinator)) {
+      deptId = dbUser.department_id;
+      // If NOT a year coordinator, OR specifically selected classes, or NOT a year-wide attempt
+      if (!dbUser.is_year_coordinator || (class_ids && class_ids.length > 0)) {
+        clsIds = (class_ids && class_ids.length > 0) ? class_ids : [dbUser.class_id];
+      }
+    } else if (dbUser.role === 'HOD') {
+      deptId = dbUser.department_id;
+    }
+
+    // Year Coordinator expansion
+    if (dbUser.is_year_coordinator && !department_id && (!class_ids || class_ids.length === 0)) {
+      const yearClasses = await Class.find({ department_id: dbUser.department_id, year: dbUser.year_scope });
+      if (yearClasses.length > 0) {
+        clsIds = yearClasses.map(c => c._id);
+      }
     }
 
     try {
@@ -979,6 +1055,57 @@ async function startServer() {
     res.json({ taskStats, studentStats });
   });
 
+  // ── Stats: Year Coordinator ───────────────────────────────────────────────
+  app.get('/api/stats/year', authenticate, async (req: any, res) => {
+    if (!req.user.is_year_coordinator)
+      return res.status(403).json({ error: 'Only year coordinators can access these stats' });
+
+    const yearScope = req.user.year_scope;
+    const deptId = req.user.department_id;
+
+    const classes = await Class.find({ department_id: deptId, year: yearScope });
+    const classIds = classes.map(c => c._id);
+    const students = await User.find({ class_id: { $in: classIds }, role: 'STUDENT' });
+    const studentIds = students.map(s => s._id);
+
+    const tasks = await Task.find({
+      $or: [
+        { class_ids: { $in: classIds } },
+        { department_id: deptId, class_ids: { $size: 0 } },
+        { department_id: null, class_ids: { $size: 0 } }
+      ]
+    });
+
+    const taskStats = await Promise.all(tasks.map(async (t) => {
+      const subs = await TaskSubmission.find({ task_id: t._id, user_id: { $in: studentIds } });
+      const studentStatuses = new Map();
+      subs.forEach(s => studentStatuses.set(s.user_id.toString(), s.status));
+      const statuses = Array.from(studentStatuses.values());
+
+      return {
+        id: t._id, title: t.title,
+        submitted: statuses.filter(s => s === 'SUBMITTED').length,
+        verified: statuses.filter(s => s === 'VERIFIED').length,
+        pending: studentIds.length - statuses.length,
+        rejected: statuses.filter(s => s === 'REJECTED').length,
+      };
+    }));
+
+    const classStats = await Promise.all(classes.map(async (c) => {
+      const classStudents = students.filter(s => s.class_id?.toString() === c._id.toString());
+      const classStudentIds = classStudents.map(s => s._id);
+      const participating = await TaskSubmission.distinct('user_id', { user_id: { $in: classStudentIds } });
+
+      return {
+        id: c._id, name: c.name,
+        total_students: classStudents.length,
+        participating_students: participating.length,
+      };
+    }));
+
+    res.json({ total_students: students.length, total_classes: classes.length, taskStats, classStats, year: yearScope });
+  });
+
   // ── Stats: Student ────────────────────────────────────────────────────────
   app.get('/api/stats/student', authenticate, authorize(['STUDENT']), async (req: any, res) => {
     const userId = req.user.id;
@@ -1010,7 +1137,7 @@ async function startServer() {
     app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist/index.html')));
   }
 
-  let PORT = 3000;
+  let PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
   const startApp = (port: number) => {
     const server = app.listen(port, '0.0.0.0', () => {
       console.log(`Server running on http://localhost:${port}`);

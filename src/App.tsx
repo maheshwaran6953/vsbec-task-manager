@@ -28,12 +28,21 @@ import {
   X,
   Info,
   AlertTriangle,
-  Loader2
+  Loader2,
+  CalendarRange
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 
 // --- Types ---
+interface YearStats {
+  total_students: number;
+  total_classes: number;
+  taskStats: { id: string; title: string; submitted: number; verified: number; pending: number; rejected: number; }[];
+  classStats: { id: string; name: string; total_students: number; participating_students: number; }[];
+  year: number;
+}
+
 interface User {
   id: number;
   username: string;
@@ -46,6 +55,8 @@ interface User {
   email?: string;
   register_number?: string;
   is_coordinator?: boolean;
+  is_year_coordinator?: boolean;
+  year_scope?: number | null;
   must_change_password?: boolean;
   is_active?: boolean;
 }
@@ -353,6 +364,7 @@ export default function App() {
   const [advisorStats, setAdvisorStats] = useState<AdvisorStats | null>(null);
   const [studentStats, setStudentStats] = useState<StudentStats | null>(null);
   const [coordinatorStats, setCoordinatorStats] = useState<CoordinatorStats | null>(null);
+  const [yearStats, setYearStats] = useState<YearStats | null>(null);
   const [myClass, setMyClass] = useState<Class | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -363,7 +375,17 @@ export default function App() {
   // Forms
   const [newDept, setNewDept] = useState('');
   const [newClass, setNewClass] = useState({ name: '', department_id: '', year: '', batch: '' });
-  const [newUser, setNewUser] = useState({ username: '', password: '', full_name: '', department_id: '', class_id: '', email: '', register_number: '' });
+  const [newUser, setNewUser] = useState({
+    username: '',
+    password: '',
+    full_name: '',
+    department_id: '',
+    class_id: '',
+    email: '',
+    register_number: '',
+    is_year_coordinator: false,
+    year_scope: ''
+  });
   const [newTask, setNewTask] = useState({
     title: '',
     description: '',
@@ -449,15 +471,33 @@ export default function App() {
       const savedUser = localStorage.getItem('user');
       if (savedUser) {
         const parsedUser = JSON.parse(savedUser);
-        setUser(parsedUser);
-        if (parsedUser.must_change_password) setShowPasswordModal(true);
-        if (parsedUser.role === 'HOD') fetchHODStats();
-        if (parsedUser.role === 'CLASS_ADVISOR' || (parsedUser.role === 'STUDENT' && parsedUser.is_coordinator)) {
-          if (parsedUser.role === 'CLASS_ADVISOR') fetchAdvisorStats();
-          if (parsedUser.role === 'STUDENT' && parsedUser.is_coordinator) fetchCoordinatorStats();
-          fetchMyClass();
+
+        // Refresh user data from server to avoid stale session flags
+        try {
+          const meRes = await fetch('/api/auth/me', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (meRes.ok) {
+            const freshUser = await meRes.json();
+            setUser(freshUser);
+            localStorage.setItem('user', JSON.stringify(freshUser));
+            if (freshUser.must_change_password) setShowPasswordModal(true);
+            if (freshUser.role === 'HOD') fetchHODStats();
+            if (freshUser.role === 'CLASS_ADVISOR' || (freshUser.role === 'STUDENT' && freshUser.is_coordinator)) {
+              if (freshUser.role === 'CLASS_ADVISOR') fetchAdvisorStats();
+              if (freshUser.role === 'STUDENT' && freshUser.is_coordinator) fetchCoordinatorStats();
+              fetchMyClass();
+            }
+            if (freshUser.role === 'STUDENT') fetchStudentStats();
+            if (freshUser.is_year_coordinator) fetchYearStats();
+          } else {
+            // Fallback to saved user if refresh fails
+            setUser(parsedUser);
+            if (parsedUser.must_change_password) setShowPasswordModal(true);
+          }
+        } catch (err) {
+          setUser(parsedUser);
         }
-        if (parsedUser.role === 'STUDENT') fetchStudentStats();
       }
       setIsLoading(false);
     } catch (e) {
@@ -514,6 +554,13 @@ export default function App() {
     try {
       const res = await fetch('/api/my-class', { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setMyClass(await res.json());
+    } catch (e) { }
+  };
+
+  const fetchYearStats = async () => {
+    try {
+      const res = await fetch('/api/stats/year', { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setYearStats(await res.json());
     } catch (e) { }
   };
 
@@ -577,6 +624,36 @@ export default function App() {
     if (res.ok) {
       // Only re-fetch users — no need to reload everything
       fetchUsers();
+    }
+  };
+
+  const toggleYearCoordinator = async (id: number, isYearCoord: boolean, currentYear?: number) => {
+    let year_scope = currentYear;
+    let is_year_coordinator = !isYearCoord;
+
+    if (is_year_coordinator) {
+      const year = prompt('Enter the Year Scope (1-4):', currentYear?.toString() || '1');
+      if (year === null) return;
+      const yrNum = parseInt(year);
+      if (isNaN(yrNum) || yrNum < 1 || yrNum > 4) {
+        addToast('Invalid year scope. Please enter 1-4.', 'error');
+        return;
+      }
+      year_scope = yrNum;
+    }
+
+    const res = await fetch(`/api/users/${id}/year-coordinator`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ is_year_coordinator, year_scope })
+    });
+
+    if (res.ok) {
+      fetchUsers();
+      addToast(is_year_coordinator ? 'Year Coordinator assigned successfully.' : 'Year Coordinator role removed.', 'success');
+    } else {
+      const data = await res.json();
+      addToast(data.error || 'Failed to update Year Coordinator status', 'error');
     }
   };
 
@@ -1121,7 +1198,7 @@ export default function App() {
             <div className="w-16 h-16 bg-black rounded-2xl flex items-center justify-center mb-6 shadow-xl">
               <ShieldCheck className="text-white w-8 h-8" />
             </div>
-            <h1 className="text-4xl font-bold text-zinc-900 tracking-tight">Academic Portal</h1>
+            <h1 className="text-4xl font-black text-zinc-900 tracking-tight">Academic Portal v2</h1>
             <p className="text-zinc-500 mt-2 text-lg">VSBEC Task Management System</p>
           </div>
 
@@ -1237,21 +1314,25 @@ export default function App() {
     // Determine context
     const isGlobal = role === 'SUPREME_ADMIN';
     const isDept = role === 'HOD';
+    const isYear = role === 'YEAR_COORDINATOR';
     const isCls = role === 'CLASS_ADVISOR' || role === 'COORDINATOR';
 
-    // Filters are already defined in App state: 
-    // analyzerClassFilter, analyzerTaskFilter, analyzerStatusFilter, adminDeptFilter
-
     const currentDeptId = isGlobal ? adminDeptFilter : user?.department_id?.toString();
+    const currentYearScope = isYear ? Number(user?.year_scope) : null;
     const currentClassId = isCls ? (user?.class_id || myClass?.id)?.toString() : analyzerClassFilter;
 
     const deptStudents = users.filter(u => {
       if (u.role !== 'STUDENT') return false;
       if (isCls) return u.class_id?.toString() === currentClassId;
+      if (isYear) {
+        const studentClass = classes.find(c => c.id.toString() === u.class_id?.toString());
+        return u.department_id?.toString() === currentDeptId && Number(studentClass?.year) === currentYearScope;
+      }
       if (currentDeptId) return u.department_id?.toString() === currentDeptId;
-      return true; // For Admin if no dept selected
+      return true;
     }).filter(u => {
-      if (!isCls && analyzerClassFilter) return u.class_id?.toString() === analyzerClassFilter;
+      if (!isCls && !isYear && analyzerClassFilter) return u.class_id?.toString() === analyzerClassFilter;
+      if (isYear && analyzerClassFilter) return u.class_id?.toString() === analyzerClassFilter;
       return true;
     });
 
@@ -1273,9 +1354,12 @@ export default function App() {
       } else {
         const studentSubs = submissions.filter(s => s.user_id?.toString() === student.id?.toString());
         const visibleTasks = tasks.filter(t => {
-          // If we are filtering by a specific class in the analyzer, show ONLY that class's tasks
+          // If we are filtering by a specific class in the analyzer, show tasks for that class OR dept-wide OR global
           if (analyzerClassFilter) {
-            return (t.class_ids || []).some(cid => cid.toString() === analyzerClassFilter);
+            if ((t.class_ids || []).some(cid => cid.toString() === analyzerClassFilter)) return true;
+            if (t.department_id && t.department_id.toString() === student.department_id?.toString() && (!(t.class_ids || []).length)) return true;
+            if (!t.department_id && (!(t.class_ids || []).length)) return true;
+            return false;
           }
           // Default logic for "All Classes" or specific Advisor context
           if (Array.isArray(t.class_ids) && t.class_ids.length > 0 && !t.class_ids.some(cid => cid.toString() === student.class_id?.toString())) return false;
@@ -1345,8 +1429,12 @@ export default function App() {
                 onChange={e => setAnalyzerClassFilter(e.target.value)}
               >
                 <option value="">All Classes</option>
-                {users.filter(u => u.role === 'CLASS_ADVISOR' && (!currentDeptId || u.department_id?.toString() === currentDeptId)).map(u => (
-                  <option key={u.id} value={u.class_id?.toString()}>{u.class_name || `${u.full_name}'s Class`}</option>
+                {classes.filter(c => {
+                  if (currentDeptId && c.department_id?.toString() !== currentDeptId) return false;
+                  if (isYear && Number(c.year) !== currentYearScope) return false;
+                  return true;
+                }).map(c => (
+                  <option key={c.id} value={c.id.toString()}>{c.name}</option>
                 ))}
               </select>
             </div>
@@ -1363,9 +1451,10 @@ export default function App() {
                 const isDeptMatch = !currentDeptId || t.department_id?.toString() === currentDeptId || !t.department_id;
                 if (!isDeptMatch) return false;
                 if (currentClassId) {
-                  // Strict filtering: Only show tasks specifically assigned to THIS class
-                  // Hide Department-wide / Global tasks if a class is selected
-                  return (t.class_ids || []).some(cid => cid.toString() === currentClassId);
+                  if ((t.class_ids || []).some(cid => cid.toString() === currentClassId)) return true;
+                  if (t.department_id && t.department_id.toString() === currentDeptId && (!(t.class_ids || []).length)) return true;
+                  if (!t.department_id && (!(t.class_ids || []).length)) return true;
+                  return false;
                 }
                 return true;
               }).map(t => (
@@ -1553,7 +1642,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F5F4] flex">
+    <div className="h-screen bg-[#F5F5F4] flex overflow-hidden">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
       {/* Rejection Modal */}
       <AnimatePresence>
@@ -1696,8 +1785,13 @@ export default function App() {
             <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
               <ShieldCheck className="text-white w-4 h-4" />
             </div>
-            <span className="font-bold text-zinc-900">
-              {isAdmin ? 'SUPREME' : isHOD ? 'HOD PORTAL' : isAdvisor ? 'ADVISOR' : isCoordinator ? 'COORDINATOR' : 'STUDENT'}
+            <span className={cn(
+              "font-bold px-2 py-0.5 rounded text-xs tracking-wider",
+              user?.is_year_coordinator
+                ? "bg-indigo-100 text-indigo-700"
+                : "text-zinc-900"
+            )}>
+              {isAdmin ? 'SUPREME' : isHOD ? 'HOD PORTAL' : user?.is_year_coordinator ? 'YEAR COORD' : isAdvisor ? 'ADVISOR' : isCoordinator ? 'COORDINATOR' : 'STUDENT'}
             </span>
           </div>
         </div>
@@ -1792,7 +1886,10 @@ export default function App() {
           <div className="px-4 py-2 mb-4">
             <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Logged in as</p>
             <p className="text-sm font-medium text-zinc-900 truncate">{user?.full_name}</p>
-            <p className="text-[10px] text-zinc-500">{user?.role} {user?.department_name ? `• ${user.department_name}` : ''}</p>
+            <p className="text-[10px] text-zinc-500">
+              {user?.is_year_coordinator ? `Year ${user.year_scope} Coordinator` : user?.role}
+              {user?.department_name ? ` • ${user.department_name}` : ''}
+            </p>
           </div>
           <button
             onClick={handleLogout}
@@ -1962,6 +2059,64 @@ export default function App() {
                         <UnifiedAnalyzer role="HOD" title="Department Analyzer" />
                       </div>
                     </div>
+                  </div>
+                ) : user?.is_year_coordinator ? (
+                  <div className="flex flex-col gap-10">
+                    {/* Coordinator Header Stats */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="bg-white p-6 rounded-3xl border border-zinc-100 shadow-sm hover:shadow-md transition-all group">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+                            <Building2 size={24} />
+                          </div>
+                          <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-full uppercase tracking-widest">Year Classes</span>
+                        </div>
+                        <p className="text-3xl font-black text-zinc-900">{yearStats?.total_classes || 0}</p>
+                        <p className="text-xs font-bold text-zinc-400 mt-1 uppercase tracking-tighter">Oversight for Year {user.year_scope}</p>
+                      </div>
+
+                      <div className="bg-white p-6 rounded-3xl border border-zinc-100 shadow-sm hover:shadow-md transition-all group">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
+                            <Users size={24} />
+                          </div>
+                          <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full uppercase tracking-widest">Year Enrollment</span>
+                        </div>
+                        <p className="text-3xl font-black text-zinc-900">{yearStats?.total_students || 0}</p>
+                        <p className="text-xs font-bold text-zinc-400 mt-1 uppercase tracking-tighter">Total Students in Year</p>
+                      </div>
+
+                      <div className="bg-white p-6 rounded-3xl border border-zinc-100 shadow-sm hover:shadow-md transition-all group">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600 group-hover:scale-110 transition-transform">
+                            <ClipboardList size={24} />
+                          </div>
+                          <span className="text-[10px] font-black text-orange-600 bg-orange-50 px-2 py-1 rounded-full uppercase tracking-widest">Year Events</span>
+                        </div>
+                        <p className="text-3xl font-black text-zinc-900">{yearStats?.taskStats?.length || 0}</p>
+                        <p className="text-xs font-bold text-zinc-400 mt-1 uppercase tracking-tighter">Active Year-wide Tasks</p>
+                      </div>
+                    </div>
+
+                    <UnifiedAnalyzer role="YEAR_COORDINATOR" title={`Year ${user.year_scope} Oversight Analyzer`} />
+
+                    {/* Secondary Class View if Advisor */}
+                    {isAdvisor && (
+                      <div className="mt-10 pt-10 border-t border-zinc-200">
+                        <div className="flex items-center gap-4 mb-8">
+                          <div className="w-1 h-8 bg-zinc-300 rounded-full" />
+                          <h3 className="text-xl font-bold text-zinc-600">My Class Dashboard</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <StatCard title="Class Students" value={users.filter(u => u.role === 'STUDENT' && u.class_id?.toString() === user?.class_id?.toString()).length} icon={<Users />} color="bg-blue-500" />
+                          <StatCard title="Submitted" value={new Set(submissions.filter(s => s.status === 'SUBMITTED' && s.class_id?.toString() === user?.class_id?.toString()).map(s => `${s.user_id}-${s.task_id}`)).size} icon={<Clock />} color="bg-orange-500" />
+                          <StatCard title="Verified" value={new Set(submissions.filter(s => s.status === 'VERIFIED' && s.class_id?.toString() === user?.class_id?.toString()).map(s => `${s.user_id}-${s.task_id}`)).size} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                        </div>
+                        <div className="mt-8">
+                          <UnifiedAnalyzer role="CLASS_ADVISOR" title="Class Performance Analyzer" />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : isAdvisor ? (
                   <div className="flex flex-col gap-10">
@@ -2397,6 +2552,43 @@ export default function App() {
                         ))}
                       </select>
                     ) : null}
+
+                    {isHOD && newUser.role === 'CLASS_ADVISOR' && (
+                      <div className="md:col-span-2 p-4 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <label className="text-sm font-bold text-zinc-900">Assign as Year Coordinator</label>
+                            <p className="text-xs text-zinc-500">Enable this to allow this advisor to post tasks for an entire year.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setNewUser(prev => ({ ...prev, is_year_coordinator: !prev.is_year_coordinator }))}
+                            className={cn(
+                              "w-12 h-6 rounded-full transition-colors relative",
+                              newUser.is_year_coordinator ? "bg-black" : "bg-zinc-200"
+                            )}
+                          >
+                            <div className={cn(
+                              "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                              newUser.is_year_coordinator ? "right-1" : "left-1"
+                            )} />
+                          </button>
+                        </div>
+
+                        {newUser.is_year_coordinator && (
+                          <div className="pt-2 border-t border-zinc-200">
+                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest block mb-2">Coordinator Year</label>
+                            <Input
+                              type="number"
+                              placeholder="e.g. 3"
+                              value={newUser.year_scope}
+                              onChange={e => setNewUser(prev => ({ ...prev, year_scope: e.target.value }))}
+                              required={newUser.is_year_coordinator}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <Button className="md:col-span-2 flex items-center justify-center gap-2">
                       <Plus size={18} /> {isAdvisor ? 'Add Student' : 'Create Account'}
                     </Button>
@@ -2451,11 +2643,17 @@ export default function App() {
                                 <td className="px-6 py-4 font-medium text-zinc-900">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     {u.full_name}
+                                    {u.is_year_coordinator && (
+                                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-600 text-white rounded-full text-[10px] font-black uppercase tracking-tighter shadow-sm animate-in fade-in zoom-in duration-300">
+                                        <CalendarRange size={12} />
+                                        Year {u.year_scope} Overall Coord
+                                      </span>
+                                    )}
                                     {!!u.is_coordinator && (
-                                      <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-bold uppercase">Coordinator</span>
+                                      <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-bold uppercase whitespace-nowrap">Class Coord</span>
                                     )}
                                     {isAdmin && (
-                                      <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase",
+                                      <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap",
                                         u.role === 'HOD' ? 'bg-blue-100 text-blue-700' :
                                           u.role === 'CLASS_ADVISOR' ? 'bg-purple-100 text-purple-700' :
                                             'bg-zinc-100 text-zinc-600'
@@ -2490,6 +2688,16 @@ export default function App() {
                                         title={u.is_coordinator ? "Remove Coordinator" : "Make Coordinator"}
                                       >
                                         <ShieldCheck size={18} />
+                                      </Button>
+                                    )}
+                                    {isHOD && u.role === 'CLASS_ADVISOR' && (
+                                      <Button
+                                        variant="ghost"
+                                        className={cn("p-2", u.is_year_coordinator ? "text-indigo-600" : "text-zinc-400")}
+                                        onClick={() => toggleYearCoordinator(u.id, u.is_year_coordinator || false, u.year_scope)}
+                                        title={u.is_year_coordinator ? "Remove Year Coordinator" : "Assign Year Coordinator"}
+                                      >
+                                        <CalendarRange size={18} />
                                       </Button>
                                     )}
                                     <Button
@@ -2597,8 +2805,22 @@ export default function App() {
                 className="space-y-6"
               >
                 {(isAdmin || isHOD || isAdvisor || isCoordinator) && (
-                  <Card>
-                    <h3 className="text-lg font-semibold mb-4">Post New Task</h3>
+                  <Card className={cn(
+                    "p-8 rounded-[2rem] shadow-sm border transition-all mb-8",
+                    user?.is_year_coordinator ? "border-indigo-100 bg-indigo-50/10" : "border-zinc-100 bg-white"
+                  )}>
+                    <h3 className={cn(
+                      "text-xl font-black mb-8 uppercase tracking-tight flex items-center gap-3",
+                      user?.is_year_coordinator ? "text-indigo-900" : "text-zinc-900"
+                    )}>
+                      <div className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center",
+                        user?.is_year_coordinator ? "bg-indigo-600 text-white" : "bg-black text-white"
+                      )}>
+                        <Plus size={20} />
+                      </div>
+                      {user?.is_year_coordinator ? `Post Year ${user.year_scope} Task` : 'Post New Task'}
+                    </h3>
                     <form onSubmit={handleTaskPreview} className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Input
@@ -2655,15 +2877,32 @@ export default function App() {
                           </select>
                         )}
 
-                        {(isAdmin || isHOD) && (
+                        {user?.is_year_coordinator && (
+                          <div className="w-full p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
+                            <p className="text-sm font-bold text-indigo-700 mb-1 flex items-center gap-2">
+                              📅 Year {user.year_scope} Coordinator Scope
+                            </p>
+                            <p className="text-xs text-indigo-600">
+                              This task will be automatically assigned to all classes in Year {user.year_scope}.
+                            </p>
+                          </div>
+                        )}
+
+                        {(isAdmin || isHOD || user?.is_year_coordinator) && (
                           <div className="w-full bg-white border border-zinc-200 rounded-lg p-3">
                             <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest mb-3 block">
-                              {isHOD ? 'Assign to Classes' : 'Select Specific Classes (Optional)'}
+                              {isAdmin ? 'Select Specific Classes (Optional)' :
+                                user?.is_year_coordinator ? `Classes in Year ${user.year_scope}` :
+                                  'Assign to Classes'}
                             </label>
 
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                               {classes
-                                .filter(c => !newTask.department_id || c.department_id?.toString() === newTask.department_id?.toString())
+                                .filter(c => {
+                                  if (isAdmin) return !newTask.department_id || c.department_id?.toString() === newTask.department_id?.toString();
+                                  if (user?.is_year_coordinator) return c.year === user.year_scope && c.department_id?.toString() === user.department_id?.toString();
+                                  return c.department_id?.toString() === user?.department_id?.toString();
+                                })
                                 .map(c => (
                                   <label key={c.id} className="flex items-center gap-2 p-2 hover:bg-zinc-50 rounded-md cursor-pointer transition-colors border border-transparent hover:border-zinc-200">
                                     <input
@@ -2684,7 +2923,8 @@ export default function App() {
                             </div>
                             {(newTask.class_ids || []).length === 0 && (
                               <p className="text-xs text-zinc-500 mt-3 bg-zinc-50 p-2 rounded">
-                                ℹ️ No specific classes selected. This task will act as a {newTask.department_id ? 'Department-Wide' : 'Global'} broadcast to everyone applicable.
+                                ℹ️ {user?.is_year_coordinator ? `No specific classes selected. This task will be automatically assigned to ALL Year ${user.year_scope} classes.` :
+                                  `No specific classes selected. This task will act as a ${newTask.department_id ? 'Department-Wide' : 'Global'} broadcast to everyone applicable.`}
                               </p>
                             )}
                           </div>
