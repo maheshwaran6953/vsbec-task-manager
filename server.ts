@@ -161,73 +161,82 @@ const Notification = mongoose.model('Notification', notificationSchema);
 
 // ─── Seeding ──────────────────────────────────────────────────────────────────
 async function seedData() {
-  // Fix existing users with empty string or null register_number/email (remove the fields)
-  const emptyRegFix = await User.updateMany(
-    { $or: [{ register_number: '' }, { register_number: null }] },
-    { $unset: { register_number: "" } }
-  );
-  const emptyEmailFix = await User.updateMany(
-    { $or: [{ email: '' }, { email: null }] },
-    { $unset: { email: "" } }
-  );
-  if (emptyRegFix.modifiedCount > 0)
-    console.log(`Fixed ${emptyRegFix.modifiedCount} users by removing empty/null register_number`);
-  if (emptyEmailFix.modifiedCount > 0)
-    console.log(`Fixed ${emptyEmailFix.modifiedCount} users by removing empty/null email`);
+  try {
+    // 1. Clear out empty/null strings that collide with unique sparse indexes
+    await User.updateMany({ register_number: '' }, { $unset: { register_number: "" } });
+    await User.updateMany({ email: '' }, { $unset: { email: "" } });
 
-  // --- Universal Sync 2.0 (The Final Scrub) ---
-  const allUsers = await User.find({});
-  console.log(`[SYNC] Commencing Universal Sync 2.0 for ${allUsers.length} users...`);
+    // 2. Universal Sync 2.0: The Deep Scrub
+    const allUsers = await User.find({});
+    console.log(`[SYNC] Commencing Universal Sync 2.0 for ${allUsers.length} users...`);
 
-  let fixCount = 0;
-  for (const u of allUsers) {
-    let changed = false;
-    const cleanUsername = u.username.replace(/\s+/g, '').trim();
-    const cleanRegNo = (u.register_number || '').replace(/\s+/g, '').trim();
+    let fixCount = 0;
+    for (const u of allUsers) {
+      try {
+        let changed = false;
+        const cleanUsername = (u.username || '').toString().replace(/\s+/g, '').trim();
+        const cleanRegNo = (u.register_number || '').toString().replace(/\s+/g, '').trim();
 
-    if (u.username !== cleanUsername) {
-      u.username = cleanUsername;
-      changed = true;
+        if (u.username !== cleanUsername && cleanUsername !== '') {
+          u.username = cleanUsername;
+          changed = true;
+        }
+
+        if (u.register_number !== cleanRegNo) {
+          if (cleanRegNo === '') {
+            // Use findByIdAndUpdate to $unset to avoid unique index collisions with ''
+            await User.findByIdAndUpdate(u._id, { $unset: { register_number: "" } });
+            u.register_number = undefined;
+          } else {
+            u.register_number = cleanRegNo;
+            changed = true;
+          }
+        }
+
+        // 3. Password Alignment: ONLY for users who haven't set a custom password yet
+        // If must_change_password is true or missing, we sync it to the scrubbed ID.
+        // Skip specific admin to avoid locking out the developer.
+        if (u.must_change_password !== false && u.username !== 'admin') {
+          const defaultPass = cleanRegNo || cleanUsername;
+          if (defaultPass) {
+            u.password = bcrypt.hashSync(defaultPass, 10);
+            u.must_change_password = true;
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          await User.findByIdAndUpdate(u._id, {
+            username: u.username,
+            register_number: u.register_number,
+            password: u.password,
+            must_change_password: u.must_change_password
+          });
+          fixCount++;
+        }
+      } catch (userErr: any) {
+        console.error(`[SYNC] Error syncing user ${u.username}:`, userErr.message);
+      }
     }
-    if (u.register_number !== cleanRegNo && cleanRegNo !== '') {
-      u.register_number = cleanRegNo;
-      changed = true;
-    }
+    console.log(`[SYNC] Completed. Cleaned/Synced ${fixCount} accounts.`);
 
-    // Also force reset password if they haven't changed it yet (ensure alignment)
-    if (u.must_change_password !== false) {
-      const defaultPass = cleanRegNo || cleanUsername;
-      u.password = bcrypt.hashSync(defaultPass, 10);
-      u.must_change_password = true;
-      changed = true;
-    }
-
-    if (changed) {
-      // Use findByIdAndUpdate to avoid hooks if necessary, or u.save()
-      await User.findByIdAndUpdate(u._id, {
-        username: u.username,
-        register_number: u.register_number,
-        password: u.password,
-        must_change_password: u.must_change_password
+    // 4. Ensure Supreme Admin exists
+    const adminExists = await User.findOne({ role: 'SUPREME_ADMIN' });
+    if (!adminExists) {
+      const admin = new User({
+        username: 'admin',
+        password: bcrypt.hashSync('admin123', 10),
+        role: 'SUPREME_ADMIN',
+        full_name: 'Supreme Administrator',
+        must_change_password: true
       });
-      fixCount++;
+      await admin.save();
+      console.log('Supreme Admin seeded: admin / admin123');
     }
-  }
-  if (fixCount > 0) console.log(`[SYNC] Completed. Cleaned/Synced ${fixCount} accounts.`);
-
-  const adminExists = await User.findOne({ role: 'SUPREME_ADMIN' });
-  if (!adminExists) {
-    const admin = new User({
-      username: 'admin',
-      password: 'admin123',
-      role: 'SUPREME_ADMIN',
-      full_name: 'Supreme Administrator',
-    });
-    await admin.save();
-    console.log('Supreme Admin seeded: admin / admin123');
+  } catch (err) {
+    console.error('[SYNC] Critical failure in seedData:', err);
   }
 }
-
 // ─── Express App ──────────────────────────────────────────────────────────────
 async function startServer() {
   await connectDB();
@@ -292,8 +301,18 @@ async function startServer() {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    if (!bcrypt.compareSync(password, user.password)) {
-      console.log(`[AUTH] Failure: Password mismatch for ${username}. Input: [${password.substring(0, 1)}***], DB Hash exists: ${!!user.password}`);
+    let isMatch = bcrypt.compareSync(password, user.password);
+
+    // Fallback: If no match, try scrubbing internal spaces from the password
+    // This handles users who think their password (e.g. Register Number) still has spaces
+    if (!isMatch && password.includes(' ')) {
+      const scrubbedPassword = password.replace(/\s+/g, '');
+      isMatch = bcrypt.compareSync(scrubbedPassword, user.password);
+      if (isMatch) console.log(`[AUTH] Fallback Match: ${username} logged in with space-scrubbed password.`);
+    }
+
+    if (!isMatch) {
+      console.log(`[AUTH] Failure: Password mismatch for ${username}. Input: [${password.substring(0, 1)}***]`);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
