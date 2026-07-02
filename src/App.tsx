@@ -948,8 +948,9 @@ export default function App() {
         const data = await res.json();
         addToast(`Submission failed: ${data.error}`, 'error');
       }
-    } catch (e) {
-      addToast('Network error during submission', 'error');
+    } catch (e: any) {
+      console.error("Submission Error Details:", e);
+      addToast(`Network error during submission: ${e.message || 'Check connection'}`, 'error');
     }
     setUploading(null);
   };

@@ -1137,6 +1137,15 @@ async function startServer() {
     app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist/index.html')));
   }
 
+  // ── Global Error Handler ─────────────────────────────────────────────────────
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error("Global Error Handler:", err);
+    res.status(err.status || 500).json({
+      error: err.message || "Internal Server Error",
+      details: process.env.NODE_ENV === "development" ? err.stack : undefined
+    });
+  });
+
   let PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
   const startApp = (port: number) => {
     const server = app.listen(port, '0.0.0.0', () => {
