@@ -26,10 +26,24 @@ if not exist ".env" (
 if not exist "node_modules\" (
     echo [INFO] Installing dependencies. This may take a minute...
     call npm install
+    if %ERRORLEVEL% NEQ 0 (
+        echo [ERROR] npm install failed. Check your internet connection.
+        pause
+        exit /b
+    )
 )
 
+:: Kill any existing process on port 3000 to avoid EADDRINUSE
+echo [INFO] Checking for existing server on port 3000...
+for /f "tokens=5" %%a in ('netstat -aon ^| find ":3000" ^| find "LISTENING" 2^>nul') do (
+    echo [INFO] Killing existing process %%a on port 3000...
+    taskkill /PID %%a /F >nul 2>nul
+)
+
+echo.
 echo [INFO] Starting the development server...
-echo [INFO] Local URL: http://localhost:3000
+echo [INFO] Once started, open your browser at: http://localhost:3000
+echo [INFO] Press Ctrl+C to stop the server.
 echo.
 
 :: Run the dev server
@@ -40,11 +54,11 @@ if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] The server failed to start.
     echo.
     echo Troubleshooting Steps:
-    echo 1. Close any other terminal windows.
-    echo 2. Run 'npm install' manually.
-    echo 3. If port is in use, check task manager for 'node.exe'.
+    echo 1. Make sure MongoDB is accessible (check your .env MONGODB_URI).
+    echo 2. Run 'npm install' manually in this folder.
+    echo 3. If port is in use, open Task Manager and end 'node.exe'.
+    echo.
 )
 
 echo.
-echo Press any key to exit...
-pause >nul
+pause
