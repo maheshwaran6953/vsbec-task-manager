@@ -6,3 +6,15 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Database
+database.sqlite
+
+# Temporary files
+tmp/
+
+# Upload directories
+public/uploads/
+
+# OS files
+Thumbs.db
