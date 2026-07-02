@@ -30,14 +30,13 @@ const cloudinaryStorage = new CloudinaryStorage({
   cloudinary,
   params: {
     folder: 'academic-task-uploads',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
     resource_type: 'auto',
   } as any,
 });
 
 const upload = multer({
   storage: cloudinaryStorage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 }, // Increased to 10MB
 });
 
 // ─── MongoDB Connection ───────────────────────────────────────────────────────
