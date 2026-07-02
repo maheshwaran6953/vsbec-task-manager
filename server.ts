@@ -32,8 +32,17 @@ console.log("--- Cloudinary Diagnostic ---");
 console.log("Cloud Name:", cloudinaryConfig.cloud_name || "MISSING");
 console.log("API Key:", maskSecret(cloudinaryConfig.api_key));
 console.log("API Secret:", maskSecret(cloudinaryConfig.api_secret));
-if (cloudinaryConfig.api_secret && (cloudinaryConfig.api_secret.includes(' ') || cloudinaryConfig.api_secret.includes('\n'))) {
-  console.warn("WARNING: Cloudinary API Secret contains whitespace/newlines! Trimming applied.");
+
+if (cloudinaryConfig.api_secret) {
+  if (cloudinaryConfig.api_secret.length === 42) {
+    console.warn("⚠️ CAUTION: API Secret length is 42. Most Cloudinary secrets are 27. You may have pasted the API Key or URL into this field!");
+  }
+  if (/[A-Z]/.test(cloudinaryConfig.api_secret)) {
+    console.log("NOTE: API Secret contains uppercase letters. Ensure this matches your Cloudinary Dashboard exactly (it usually does not).");
+  }
+  if (cloudinaryConfig.api_secret.includes(' ') || cloudinaryConfig.api_secret.includes('\n')) {
+    console.warn("⚠️ WARNING: Cloudinary API Secret contains whitespace/newlines! Trimming applied.");
+  }
 }
 console.log("-----------------------------");
 
@@ -167,6 +176,32 @@ async function seedData() {
     console.log(`Fixed ${emptyRegFix.modifiedCount} users by removing empty/null register_number`);
   if (emptyEmailFix.modifiedCount > 0)
     console.log(`Fixed ${emptyEmailFix.modifiedCount} users by removing empty/null email`);
+
+  // Robust Migration: Trim all usernames and register numbers
+  const allUsers = await User.find({ role: { $in: ['STUDENT', 'CLASS_ADVISOR', 'HOD'] } });
+  let trimFixCount = 0;
+  for (const u of allUsers) {
+    let changed = false;
+    const trimmedUsername = u.username.trim();
+    if (u.username !== trimmedUsername) {
+      u.username = trimmedUsername;
+      changed = true;
+    }
+    if (u.register_number && u.register_number !== u.register_number.trim()) {
+      u.register_number = u.register_number.trim();
+      changed = true;
+    }
+    // Force must_change_password for students who never logged in properly
+    if (u.role === 'STUDENT' && u.must_change_password === undefined) {
+      u.must_change_password = true;
+      changed = true;
+    }
+    if (changed) {
+      await u.save();
+      trimFixCount++;
+    }
+  }
+  if (trimFixCount > 0) console.log(`Cleaned up data (trimmed) for ${trimFixCount} users.`);
 
   const adminExists = await User.findOne({ role: 'SUPREME_ADMIN' });
   if (!adminExists) {
@@ -1153,6 +1188,27 @@ async function startServer() {
       submitted_tasks: subs.filter(s => s.status === 'SUBMITTED').length,
       rejected_tasks: subs.filter(s => s.status === 'REJECTED').length,
     });
+  });
+
+  // ── Admin Debug ────────────────────────────────────────────────────────────
+  app.get('/api/admin/debug-cloudinary', authenticate, authorize(['SUPREME_ADMIN']), async (req: any, res) => {
+    try {
+      const testImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64');
+      const b64 = testImage.toString('base64');
+      const dataURI = `data:image/png;base64,${b64}`;
+      const result = await cloudinary.uploader.upload(dataURI, {
+        folder: 'debug-test',
+        resource_type: 'auto'
+      });
+      res.json({ success: true, message: "Cloudinary is WORKING!", result });
+    } catch (err: any) {
+      console.error("DEBUG Cloudinary Error:", err);
+      res.status(500).json({
+        success: false,
+        message: err.message,
+        hint: err.message?.includes('Signature') ? "Mismatch detected. Check API Secret length and casing (local vs Render)." : "Check API Key and Cloud Name."
+      });
+    }
   });
 
   // ── Vite Middleware ───────────────────────────────────────────────────────
