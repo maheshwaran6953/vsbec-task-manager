@@ -11,7 +11,6 @@ import multer from 'multer';
 import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import fs from 'fs';
-import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 dotenv.config();
 
@@ -188,21 +187,8 @@ async function startServer() {
   app.set('trust proxy', 1);
 
   // ── Security configuration ───────────────────────────────────────────────────
-  const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 1000, // Increased for production stability
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Too many requests from this IP, please try again after 15 minutes' }
-  });
+  // Rate limiters removed to support high user volume (1000+) and prevent lockouts.
 
-  const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // Reduced window to 15 mins
-    max: 100, // Much higher limit for troubleshooting
-    message: { error: 'Too many login attempts, please try again after 15 minutes' }
-  });
-
-  app.use('/api/', apiLimiter);
   app.use(express.json());
   app.use(cors({
     origin: (origin, callback) => {
@@ -238,7 +224,7 @@ async function startServer() {
   };
 
   // ── Auth ──────────────────────────────────────────────────────────────────
-  app.post('/api/auth/login', loginLimiter, async (req, res) => {
+  app.post('/api/auth/login', async (req, res) => {
     const { username, password, role } = req.body;
     const user: any = await User.findOne({
       $or: [
