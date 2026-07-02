@@ -77,4 +77,54 @@ Every level has visibility into the layer directly below it and can roll up stat
 *   **Bulk Onboarding:** Class Advisors can import `.xlsx` files. The backend seamlessly hashes incoming register numbers into passwords while validating duplicates.
 
 ---
+
+## Deployment & Hosting Guide 🌍
+
+This project is fully configured for production deployment on platforms like **Render**, **Railway**, or **Heroku**. It uses a single-server architecture where the Express backend serves the Vite frontend from the `dist` folder.
+
+### Step 1: Preparation (Already Done)
+The `package.json` and `server.ts` have been pre-configured for hosting:
+- **`start` script**: Runs `tsx server.ts` (the standard entry point for platforms).
+- **Dynamic Port**: The server listens on `process.env.PORT || 3000`.
+- **Frontend Serving**: In production, the backend automatically serves the `dist` folder.
+
+### Step 2: Hosting on Render (Recommended Free/Cheap Tier)
+
+1. **Create a Render Account**: Go to [Render.com](https://render.com/) and sign up.
+2. **Connect GitHub**: Connect your GitHub account and select your `VSBEC-TASK-MANAGER` repository.
+3. **Create a Web Service**: Click **New +** > **Web Service**.
+4. **Configure the Service**:
+   - **Name**: Choose a name (e.g., `vsbec-task-manager`).
+   - **Environment**: `Node`
+   - **Branch**: `main`
+   - **Build Command**: `npm install && npm run build`
+     - *(This installs dependencies and builds the Vite frontend into the `dist` folder).*
+   - **Start Command**: `npm start`
+     - *(This executes `tsx server.ts` as defined in `package.json`).*
+
+### Step 3: Environment Variables
+You MUST configure the following Environment Variables in your hosting dashboard (e.g., Render's "Environment" tab). **Do not skip this**, or the app will crash:
+
+| Key | Example Value | Description |
+| :--- | :--- | :--- |
+| **`NODE_ENV`** | `production` | Tells Express to serve the built frontend from `/dist`. |
+| **`MONGODB_URI`** | `mongodb+srv://...` | Your production MongoDB connection string. |
+| **`JWT_SECRET`** | `your_secure_random_string` | Used to sign login tokens. Make it long and random. |
+| **`CLOUDINARY_CLOUD_NAME`** | `xxx` | From your Cloudinary dashboard. |
+| **`CLOUDINARY_API_KEY`** | `123...` | From your Cloudinary dashboard. |
+| **`CLOUDINARY_API_SECRET`** | `xyz...` | From your Cloudinary dashboard. |
+
+### Step 4: Deploy
+- Click **Deploy** / Save on your hosting platform.
+- Watch the build logs. It will run `npm install`, then `vite build`, and finally `tsx server.ts`.
+- Once it says "Server running on http://0.0.0.0:xxxx", your app is live!
+
+### Important Production Notes:
+- **Database IP Allowlist**: Ensure your MongoDB Atlas cluster has **Network Access** set to `0.0.0.0/0` (Allow Access from Anywhere) so your hosting platform can connect to it.
+- **Root Admin**: When the server spins up connected to a fresh database, it will automatically run the seeder script. You can log in with:
+  - **Username**: `admin`
+  - **Password**: `admin123`
+  - *(It is highly recommended to change this password immediately after logging into production).*
+
+---
 *Built for VSBEC Academic Management.*
