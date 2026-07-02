@@ -1,5 +1,9 @@
 # Academic Task Management System - Sample Credentials
 
+> [!TIP]
+> **Database:** Currently running on MongoDB Atlas.
+> **File Storage:** Uploads are going to Cloudinary.
+
 ## Supreme Admin
 - **Username**: `admin`
 - **Password**: `admin123`
