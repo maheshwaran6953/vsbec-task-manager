@@ -26,17 +26,9 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const cloudinaryStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: 'academic-task-uploads',
-    resource_type: 'auto',
-  } as any,
-});
-
 const upload = multer({
-  storage: cloudinaryStorage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // Increased to 10MB
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
 // ─── MongoDB Connection ───────────────────────────────────────────────────────
@@ -926,9 +918,26 @@ async function startServer() {
       return res.status(400).json({ error: errorMessage });
     }
     const { task_id, custom_field_value } = req.body;
-    const screenshot_url = req.file?.path || null; // Cloudinary URL
 
-    if (!screenshot_url) return res.status(400).json({ error: 'Screenshot is required' });
+    if (!req.file) return res.status(400).json({ error: 'Screenshot is required' });
+
+    let screenshot_url;
+    try {
+      const b64 = Buffer.from(req.file.buffer).toString('base64');
+      const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+      const uploadResponse = await cloudinary.uploader.upload(dataURI, {
+        folder: 'academic-task-uploads',
+        resource_type: 'auto'
+      });
+      screenshot_url = uploadResponse.secure_url;
+    } catch (uploadErr: any) {
+      console.error("Cloudinary Upload Error:", uploadErr);
+      return res.status(500).json({
+        error: `Upload failed: ${uploadErr.message || 'Signature/Secret mismatch'}. Please verify Cloudinary ENV on Render.`
+      });
+    }
+
+    if (!screenshot_url) return res.status(400).json({ error: 'Screenshot processing failed.' });
 
     const task: any = await Task.findById(task_id);
     if (!task) return res.status(404).json({ error: 'Task not found' });
