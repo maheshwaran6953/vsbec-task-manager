@@ -1261,10 +1261,10 @@ export default function App() {
                   <form onSubmit={handleLogin} className="space-y-4">
                     <div>
                       <label className="text-sm font-medium text-zinc-700 mb-1 block">
-                        {loginRole === 'STUDENT' ? 'Register Number' : 'Username'}
+                        {loginRole === 'STUDENT' || loginRole === 'STUDENT_COORDINATOR' ? 'Register Number' : 'Username'}
                       </label>
                       <Input
-                        placeholder={loginRole === 'STUDENT' ? 'e.g. CSE001' : 'Username'}
+                        placeholder={loginRole === 'STUDENT' || loginRole === 'STUDENT_COORDINATOR' ? 'e.g. 922523205128' : 'Username'}
                         value={loginData.username}
                         onChange={e => setLoginData(prev => ({ ...prev, username: e.target.value }))}
                         required

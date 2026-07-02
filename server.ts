@@ -98,7 +98,7 @@ const userSchema = new Schema({
   is_coordinator: { type: Boolean, default: false },
   is_year_coordinator: { type: Boolean, default: false },
   year_scope: { type: Number, default: null },
-  must_change_password: { type: Boolean, default: false },
+  must_change_password: { type: Boolean, default: true },
   is_active: { type: Boolean, default: true },
 }, { timestamps: true });
 
@@ -193,15 +193,27 @@ async function seedData() {
           }
         }
 
-        // 3. Password Alignment: ONLY for users who haven't set a custom password yet
-        // If must_change_password is true or missing, we sync it to the scrubbed ID.
-        // Skip specific admin to avoid locking out the developer.
-        if (u.must_change_password !== false && u.username !== 'admin') {
-          const defaultPass = cleanRegNo || cleanUsername;
-          if (defaultPass) {
-            u.password = bcrypt.hashSync(defaultPass, 10);
-            u.must_change_password = true;
-            changed = true;
+        // 3. Password Alignment & Force Activation
+        // If they are a student, we ALWAYS ensure they are in must_change_password state
+        // unless they have explicitly been finalized. 
+        // For security and synchronization, we reset them to their default ID-based password.
+        if (u.username !== 'admin') {
+          const isStudent = u.role === 'STUDENT';
+          // Force reset if:
+          // - must_change_password is true (normal case)
+          // - must_change_password is false but they are a student (Fixes the default:false bug)
+          // - must_change_password is undefined
+          if (u.must_change_password !== false || isStudent) {
+            const defaultPass = cleanRegNo || cleanUsername;
+            if (defaultPass) {
+              const newHash = bcrypt.hashSync(defaultPass, 10);
+              // Only update if the hash is different or flag is wrong
+              if (u.password !== newHash || u.must_change_password !== true) {
+                u.password = newHash;
+                u.must_change_password = true;
+                changed = true;
+              }
+            }
           }
         }
 
