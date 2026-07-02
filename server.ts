@@ -184,20 +184,22 @@ async function startServer() {
   await seedData();
 
   const app = express();
+  // Trust proxy for correct IP detection on Render/Vercel
+  app.set('trust proxy', 1);
 
   // ── Security configuration ───────────────────────────────────────────────────
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 300, // Limit each IP to 300 requests per window
+    max: 1000, // Increased for production stability
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests from this IP, please try again after 15 minutes' }
   });
 
   const loginLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour
-    max: 15, // Limit each IP to 15 login requests per hour
-    message: { error: 'Too many login attempts, please try again after an hour' }
+    windowMs: 15 * 60 * 1000, // Reduced window to 15 mins
+    max: 100, // Much higher limit for troubleshooting
+    message: { error: 'Too many login attempts, please try again after 15 minutes' }
   });
 
   app.use('/api/', apiLimiter);

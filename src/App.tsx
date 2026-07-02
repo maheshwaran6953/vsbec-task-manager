@@ -602,7 +602,7 @@ export default function App() {
   };
 
   const toggleCoordinator = async (id: number, currentStatus: boolean) => {
-    const res = await fetch(`/api/users/${id}/coordinator`, {
+    const res = await fetch(`${API_URL}/api/users/${id}/coordinator`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ is_coordinator: !currentStatus })
@@ -617,7 +617,7 @@ export default function App() {
   };
 
   const toggleUserStatus = async (id: number, currentStatus: boolean) => {
-    const res = await fetch(`/api/users/${id}/status`, {
+    const res = await fetch(`${API_URL}/api/users/${id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ is_active: !currentStatus })
@@ -643,7 +643,7 @@ export default function App() {
       year_scope = yrNum;
     }
 
-    const res = await fetch(`/api/users/${id}/year-coordinator`, {
+    const res = await fetch(`${API_URL}/api/users/${id}/year-coordinator`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ is_year_coordinator, year_scope })
@@ -864,7 +864,7 @@ export default function App() {
 
   const resetPassword = async (id: number) => {
     if (!confirm('Reset this user\'s password to their Register Number/Username? They will be prompted to change it on next login.')) return;
-    const res = await fetch(`/api/users/${id}/reset-password`, {
+    const res = await fetch(`${API_URL}/api/users/${id}/reset-password`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -955,7 +955,7 @@ export default function App() {
   };
 
   const verifySubmission = async (id: number, status: string) => {
-    await fetch(`/api/submissions/${id}/verify`, {
+    await fetch(`${API_URL}/api/submissions/${id}/verify`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -984,7 +984,7 @@ export default function App() {
 
   const toggleTaskStatus = async (id: number, currentStatus: string) => {
     const status = currentStatus === 'OPEN' ? 'CLOSED' : 'OPEN';
-    const res = await fetch(`/api/tasks/${id}/status`, {
+    const res = await fetch(`${API_URL}/api/tasks/${id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ status })
@@ -999,7 +999,7 @@ export default function App() {
 
   const deleteTask = async (id: number) => {
     if (!confirm('Hard delete this task? This cannot be undone.')) return;
-    const res = await fetch(`/api/tasks/${id}`, {
+    const res = await fetch(`${API_URL}/api/tasks/${id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -2226,7 +2226,7 @@ export default function App() {
                       <button
                         onClick={() => {
                           if (confirm('Delete department?')) {
-                            fetch(`/api/departments/${dept.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(() => fetchInitialData());
+                            fetch(`${API_URL}/api/departments/${dept.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(() => fetchInitialData());
                           }
                         }}
                         className="p-2 text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
@@ -2297,7 +2297,7 @@ export default function App() {
                           <button
                             onClick={() => {
                               if (confirm('Are you sure? This will delete all students and tasks associated with this class.')) {
-                                fetch(`/api/classes/${c.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(() => fetchInitialData());
+                                fetch(`${API_URL}/api/classes/${c.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(() => fetchInitialData());
                               }
                             }}
                             className="p-2 text-zinc-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
@@ -2722,7 +2722,7 @@ export default function App() {
                                       onClick={async () => {
                                         const roleLabel = u.role === 'CLASS_ADVISOR' ? 'Advisor' : u.role === 'HOD' ? 'HOD' : 'User';
                                         if (confirm(`Delete ${roleLabel} ${u.full_name}? This cannot be undone.`)) {
-                                          const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+                                          const res = await fetch(`${API_URL}/api/users/${u.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
                                           if (res.ok) {
                                             fetchInitialData();
                                             addToast(`${roleLabel} deleted successfully.`, 'success');
@@ -3244,7 +3244,7 @@ export default function App() {
                       onClick={() => {
                         if (confirm(`Verify ${selectedSubmissions.length} submissions?`)) {
                           Promise.all(selectedSubmissions.map(id =>
-                            fetch(`/api/submissions/${id}/verify`, {
+                            fetch(`${API_URL}/api/submissions/${id}/verify`, {
                               method: 'PATCH',
                               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                               body: JSON.stringify({ status: 'VERIFIED' })
@@ -3403,7 +3403,7 @@ export default function App() {
                                     className="p-1.5 ml-1 text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-colors rounded-lg"
                                     onClick={async () => {
                                       if (confirm('Are you sure you want to delete this submission? This action cannot be undone.')) {
-                                        const res = await fetch(`/api/submissions/${s.id}`, {
+                                        const res = await fetch(`${API_URL}/api/submissions/${s.id}`, {
                                           method: 'DELETE',
                                           headers: { Authorization: `Bearer ${token}` }
                                         });
