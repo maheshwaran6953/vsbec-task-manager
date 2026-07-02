@@ -180,28 +180,40 @@ async function seedData() {
   // Robust Migration: Trim all usernames and register numbers
   const allUsers = await User.find({ role: { $in: ['STUDENT', 'CLASS_ADVISOR', 'HOD'] } });
   let trimFixCount = 0;
+  let passSyncCount = 0;
   for (const u of allUsers) {
     let changed = false;
-    const trimmedUsername = u.username.trim();
-    if (u.username !== trimmedUsername) {
-      u.username = trimmedUsername;
+    const strippedUsername = u.username.trim();
+    if (u.username !== strippedUsername) {
+      u.username = strippedUsername;
       changed = true;
     }
     if (u.register_number && u.register_number !== u.register_number.trim()) {
       u.register_number = u.register_number.trim();
       changed = true;
     }
-    // Force must_change_password for students who never logged in properly
-    if (u.role === 'STUDENT' && u.must_change_password === undefined) {
-      u.must_change_password = true;
+
+    // DEEP SYNC: If it's a student who hasn't changed their password yet,
+    // re-sync the password with their (now trimmed) register_number.
+    if (u.role === 'STUDENT' && (u.must_change_password === true || u.must_change_password === undefined)) {
+      const expectedPass = u.register_number || u.username;
+      // Only re-hash if it's actually different or if they were missing the flag
+      if (u.must_change_password === undefined) {
+        u.must_change_password = true;
+        changed = true;
+      }
+      // Force re-hash once to ensure it matches the trimmed reg_no
+      u.password = expectedPass; // Schema pre-save will hash this
       changed = true;
+      passSyncCount++;
     }
+
     if (changed) {
       await u.save();
       trimFixCount++;
     }
   }
-  if (trimFixCount > 0) console.log(`Cleaned up data (trimmed) for ${trimFixCount} users.`);
+  if (trimFixCount > 0) console.log(`Cleaned up data (trimmed) for ${trimFixCount} users. Password re-sync for ${passSyncCount} students.`);
 
   const adminExists = await User.findOne({ role: 'SUPREME_ADMIN' });
   if (!adminExists) {
@@ -1203,11 +1215,14 @@ async function startServer() {
       res.json({ success: true, message: "Cloudinary is WORKING!", result });
     } catch (err: any) {
       console.error("DEBUG Cloudinary Error:", err);
-      res.status(500).json({
-        success: false,
-        message: err.message,
-        hint: err.message?.includes('Signature') ? "Mismatch detected. Check API Secret length and casing (local vs Render)." : "Check API Key and Cloud Name."
-      });
+      let hint = "Check API Key and Cloud Name.";
+      if (err.message?.includes('Signature')) {
+        hint = "Signature Mismatch. Check API Secret.";
+        if (process.env.CLOUDINARY_API_SECRET?.length === 42) {
+          hint += " IMPORTANT: Your Secret length is 42. You likely copied the 'API Environment variable' URL instead of just the 'API Secret'!";
+        }
+      }
+      res.status(500).json({ success: false, message: err.message, hint });
     }
   });
 
