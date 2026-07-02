@@ -19,12 +19,24 @@ const __dirname = path.dirname(__filename);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key';
 
-// ─── Cloudinary Config ────────────────────────────────────────────────────────
-cloudinary.config({
+// ─── Cloudinary Config & Diagnostics ──────────────────────────────────────────
+const cloudinaryConfig = {
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+};
+
+// Diagnostic logging (visible in Render logs)
+console.log("--- Cloudinary Diagnostic ---");
+console.log("Cloud Name:", cloudinaryConfig.cloud_name || "MISSING");
+console.log("API Key:", cloudinaryConfig.api_key ? "SET (****)" : "MISSING");
+console.log("API Secret:", cloudinaryConfig.api_secret ? `SET (Length: ${cloudinaryConfig.api_secret.length})` : "MISSING");
+if (cloudinaryConfig.api_secret && (cloudinaryConfig.api_secret.includes(' ') || cloudinaryConfig.api_secret.includes('\n'))) {
+  console.warn("WARNING: Cloudinary API Secret contains whitespace/newlines!");
+}
+console.log("-----------------------------");
+
+cloudinary.config(cloudinaryConfig);
 
 const upload = multer({
   storage: multer.memoryStorage(),

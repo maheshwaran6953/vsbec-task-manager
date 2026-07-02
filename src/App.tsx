@@ -335,7 +335,7 @@ const EmptyState = ({ icon: Icon, title, description }: { icon: any, title: stri
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [token, setToken] = useState<string | null>(sessionStorage.getItem('token'));
   const [view, setView] = useState<string>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -469,7 +469,7 @@ export default function App() {
       if (submissions) setSubmissions(submissions);
       if (notifications) setNotifications(notifications);
 
-      const savedUser = localStorage.getItem('user');
+      const savedUser = sessionStorage.getItem('user');
       if (savedUser) {
         const parsedUser = JSON.parse(savedUser);
 
@@ -481,7 +481,7 @@ export default function App() {
           if (meRes.ok) {
             const freshUser = await meRes.json();
             setUser(freshUser);
-            localStorage.setItem('user', JSON.stringify(freshUser));
+            sessionStorage.setItem('user', JSON.stringify(freshUser));
             if (freshUser.must_change_password) setShowPasswordModal(true);
             if (freshUser.role === 'HOD') fetchHODStats();
             if (freshUser.role === 'CLASS_ADVISOR' || (freshUser.role === 'STUDENT' && freshUser.is_coordinator)) {
@@ -596,7 +596,7 @@ export default function App() {
       if (user) {
         const updated = { ...user, must_change_password: false };
         setUser(updated);
-        localStorage.setItem('user', JSON.stringify(updated));
+        sessionStorage.setItem('user', JSON.stringify(updated));
       }
     }
   };
@@ -737,8 +737,8 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        sessionStorage.setItem('token', data.token);
+        sessionStorage.setItem('user', JSON.stringify(data.user));
         setToken(data.token);
         setUser(data.user);
         if (data.user.must_change_password) {
@@ -755,8 +755,8 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
     setToken(null);
     setUser(null);
     setLoginRole(null);
