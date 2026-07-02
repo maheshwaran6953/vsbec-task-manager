@@ -80,30 +80,10 @@ Every level has visibility into the layer directly below it and can roll up stat
 
 ## Deployment & Hosting Guide 🌍
 
-This project is fully configured for production deployment on platforms like **Render**, **Railway**, or **Heroku**. It uses a single-server architecture where the Express backend serves the Vite frontend from the `dist` folder.
+This project uses a single-server architecture where the Express backend serves the Vite frontend. It is pre-configured to be deployed natively on **Render**, or serverlessly on **Vercel**.
 
-### Step 1: Preparation (Already Done)
-The `package.json` and `server.ts` have been pre-configured for hosting:
-- **`start` script**: Runs `tsx server.ts` (the standard entry point for platforms).
-- **Dynamic Port**: The server listens on `process.env.PORT || 3000`.
-- **Frontend Serving**: In production, the backend automatically serves the `dist` folder.
-
-### Step 2: Hosting on Render (Recommended Free/Cheap Tier)
-
-1. **Create a Render Account**: Go to [Render.com](https://render.com/) and sign up.
-2. **Connect GitHub**: Connect your GitHub account and select your `VSBEC-TASK-MANAGER` repository.
-3. **Create a Web Service**: Click **New +** > **Web Service**.
-4. **Configure the Service**:
-   - **Name**: Choose a name (e.g., `vsbec-task-manager`).
-   - **Environment**: `Node`
-   - **Branch**: `main`
-   - **Build Command**: `npm install && npm run build`
-     - *(This installs dependencies and builds the Vite frontend into the `dist` folder).*
-   - **Start Command**: `npm start`
-     - *(This executes `tsx server.ts` as defined in `package.json`).*
-
-### Step 3: Environment Variables
-You MUST configure the following Environment Variables in your hosting dashboard (e.g., Render's "Environment" tab). **Do not skip this**, or the app will crash:
+### Step 1: Environment Variables Configuration
+Regardless of where you host, you **MUST** configure these Environment Variables in your hosting dashboard prior to deploying. Do not skip this:
 
 | Key | Example Value | Description |
 | :--- | :--- | :--- |
@@ -114,17 +94,48 @@ You MUST configure the following Environment Variables in your hosting dashboard
 | **`CLOUDINARY_API_KEY`** | `123...` | From your Cloudinary dashboard. |
 | **`CLOUDINARY_API_SECRET`** | `xyz...` | From your Cloudinary dashboard. |
 
-### Step 4: Deploy
-- Click **Deploy** / Save on your hosting platform.
-- Watch the build logs. It will run `npm install`, then `vite build`, and finally `tsx server.ts`.
-- Once it says "Server running on http://0.0.0.0:xxxx", your app is live!
+> **MongoDB Note:** Ensure your MongoDB Atlas cluster has **Network Access** set to `0.0.0.0/0` (Allow Access from Anywhere) so your hosting platform can connect.
 
-### Important Production Notes:
-- **Database IP Allowlist**: Ensure your MongoDB Atlas cluster has **Network Access** set to `0.0.0.0/0` (Allow Access from Anywhere) so your hosting platform can connect to it.
-- **Root Admin**: When the server spins up connected to a fresh database, it will automatically run the seeder script. You can log in with:
-  - **Username**: `admin`
-  - **Password**: `admin123`
-  - *(It is highly recommended to change this password immediately after logging into production).*
+---
+
+### Option A: Hosting on Vercel (Fastest Serverless Hosting)
+
+Vercel is optimized for frontend frameworks but supports our Express backend via Serverless Functions configured in `vercel.json`.
+
+1. **Push to GitHub**: Make sure this codebase (including `vercel.json`) is pushed to a GitHub repository.
+2. **Import Project**: Go to [Vercel](https://vercel.com/), click **Add New -> Project**, and import your repository.
+3. **Configure Project**:
+   - **Framework Preset**: Leave as `Other` or `Vite`.
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+   - **Environment Variables**: Add all the variables listed in Step 1.
+4. **Deploy**: Click Deploy. Vercel will build the frontend into `dist` and deploy `server.ts` as a serverless function that handles your `/api` routes and serves the frontend.
+
+---
+
+### Option B: Hosting on Render (Standard Node Environment)
+
+Render works like a traditional server. It will run the Node process continuously.
+
+1. **Create a Render Account**: Go to [Render.com](https://render.com/) and sign up.
+2. **Create a Web Service**: Click **New +** > **Web Service**. Connect your GitHub and select the repository.
+3. **Configure the Service**:
+   - **Name**: Choose a name (e.g., `vsbec-task-manager`).
+   - **Environment**: `Node`
+   - **Branch**: `main`
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm start`
+4. **Environment Variables**: Click "Environment" and add all the variables from Step 1.
+5. **Deploy**: Click Save. Render will run the build command and start the server using the `start` script defined in `package.json`.
+
+---
+
+### First Production Login
+When the server spins up for the first time on a fresh database, it will automatically run the seeder script. You can log in with the default admin:
+- **Username**: `admin`
+- **Password**: `admin123`
+
+*⚠️ It is highly recommended to change this password immediately after logging into your production system!*
 
 ---
 *Built for VSBEC Academic Management.*
