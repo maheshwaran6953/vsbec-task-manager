@@ -162,8 +162,6 @@ const Notification = mongoose.model('Notification', notificationSchema);
 // ─── Seeding ──────────────────────────────────────────────────────────────────
 async function seedData() {
   // Fix existing users with empty string or null register_number/email (remove the fields)
-  // This is a one-time migration to fix the unique sparse index issue
-  // We use $unset to remove the field entirely so the sparse index ignores them
   const emptyRegFix = await User.updateMany(
     { $or: [{ register_number: '' }, { register_number: null }] },
     { $unset: { register_number: "" } }
@@ -177,36 +175,45 @@ async function seedData() {
   if (emptyEmailFix.modifiedCount > 0)
     console.log(`Fixed ${emptyEmailFix.modifiedCount} users by removing empty/null email`);
 
-  // Universal Migration: Trim ALL usernames and Register Numbers for ALL roles
-  // Nuclear Sync: Force sync passwords for ANY user stuck in initial state (must_change_password: true)
-  const allUsers = await User.find({
-    $or: [
-      { must_change_password: { $ne: false } },
-      { register_number: { $regex: /\s/ } },
-      { username: { $regex: /\s/ } }
-    ]
-  });
+  // --- Universal Sync 2.0 (The Final Scrub) ---
+  const allUsers = await User.find({});
+  console.log(`[SYNC] Commencing Universal Sync 2.0 for ${allUsers.length} users...`);
 
-  let universalFixCount = 0;
+  let fixCount = 0;
   for (const u of allUsers) {
-    const trimmedUsername = (u.username || '').trim();
-    const trimmedRegNo = (u.register_number || '').trim() || trimmedUsername;
+    let changed = false;
+    const cleanUsername = u.username.replace(/\s+/g, '').trim();
+    const cleanRegNo = (u.register_number || '').replace(/\s+/g, '').trim();
 
-    const updateData: any = {
-      username: trimmedUsername,
-      register_number: trimmedRegNo
-    };
-
-    // If they haven't changed their password yet, ensure it matches their trimmed ID
-    if (u.must_change_password !== false) {
-      updateData.password = bcrypt.hashSync(trimmedRegNo, 10);
-      updateData.must_change_password = true;
+    if (u.username !== cleanUsername) {
+      u.username = cleanUsername;
+      changed = true;
+    }
+    if (u.register_number !== cleanRegNo && cleanRegNo !== '') {
+      u.register_number = cleanRegNo;
+      changed = true;
     }
 
-    await User.findByIdAndUpdate(u._id, updateData);
-    universalFixCount++;
+    // Also force reset password if they haven't changed it yet (ensure alignment)
+    if (u.must_change_password !== false) {
+      const defaultPass = cleanRegNo || cleanUsername;
+      u.password = bcrypt.hashSync(defaultPass, 10);
+      u.must_change_password = true;
+      changed = true;
+    }
+
+    if (changed) {
+      // Use findByIdAndUpdate to avoid hooks if necessary, or u.save()
+      await User.findByIdAndUpdate(u._id, {
+        username: u.username,
+        register_number: u.register_number,
+        password: u.password,
+        must_change_password: u.must_change_password
+      });
+      fixCount++;
+    }
   }
-  if (universalFixCount > 0) console.log(`[AUTH] Universal Sync: Cleaned credentials for ${universalFixCount} users (all roles).`);
+  if (fixCount > 0) console.log(`[SYNC] Completed. Cleaned/Synced ${fixCount} accounts.`);
 
   const adminExists = await User.findOne({ role: 'SUPREME_ADMIN' });
   if (!adminExists) {
@@ -270,13 +277,13 @@ async function startServer() {
   // ── Auth ──────────────────────────────────────────────────────────────────
   app.post('/api/auth/login', async (req, res) => {
     const { username: rawUsername, password: rawPassword, role } = req.body;
-    const username = (rawUsername || '').toString().trim();
+    const username = (rawUsername || '').toString().replace(/\s+/g, '').trim();
     const password = (rawPassword || '').toString().trim();
 
     const user: any = await User.findOne({
       $or: [
-        { username: { $regex: new RegExp(`^${username}$`, 'i') } },
-        { register_number: { $regex: new RegExp(`^${username}$`, 'i') } }
+        { username: { $regex: new RegExp(`^${username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+        { register_number: { $regex: new RegExp(`^${username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
       ],
     });
 
@@ -293,15 +300,19 @@ async function startServer() {
     console.log(`[AUTH] Success: ${username} logged in as ${user.role}`);
 
     if (role) {
+      console.log(`[AUTH] Validating role ${role} for user ${user.username} (Role: ${user.role}, Coordinator: ${user.is_coordinator})`);
       if (role === 'STUDENT_COORDINATOR') {
         if (user.role !== 'STUDENT' || !user.is_coordinator) {
+          console.log(`[AUTH] Role Fail: User is ${user.role}, is_coordinator: ${user.is_coordinator}`);
           return res.status(403).json({ error: 'This account is not registered as a Coordinator' });
         }
       } else if (role === 'STUDENT') {
         if (user.role !== 'STUDENT') {
+          console.log(`[AUTH] Role Fail: Expected STUDENT, got ${user.role}`);
           return res.status(403).json({ error: 'This account is not registered as a Student' });
         }
       } else if (user.role !== role) {
+        console.log(`[AUTH] Role Fail: Expected ${role}, got ${user.role}`);
         const roleMap: Record<string, string> = {
           'CLASS_ADVISOR': 'Class Advisor',
           'HOD': 'Department HOD',
