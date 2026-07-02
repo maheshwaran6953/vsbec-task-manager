@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { API_URL } from './config';
 import {
   LayoutDashboard,
   Building2,
@@ -443,12 +444,12 @@ export default function App() {
       const headers = { Authorization: `Bearer ${token}` };
       // Fire all requests in parallel
       const [deptsRes, classesRes, usersRes, tasksRes, submissionsRes, notificationsRes] = await Promise.all([
-        fetch('/api/departments', { headers }),
-        fetch('/api/classes', { headers }),
-        fetch('/api/users', { headers }),
-        fetch('/api/tasks', { headers }),
-        fetch('/api/submissions', { headers }),
-        fetch('/api/notifications', { headers })
+        fetch(`${API_URL}/api/departments`, { headers }),
+        fetch(`${API_URL}/api/classes`, { headers }),
+        fetch(`${API_URL}/api/users`, { headers }),
+        fetch(`${API_URL}/api/tasks`, { headers }),
+        fetch(`${API_URL}/api/submissions`, { headers }),
+        fetch(`${API_URL}/api/notifications`, { headers })
       ]);
 
       // Parse JSON in parallel too
@@ -474,7 +475,7 @@ export default function App() {
 
         // Refresh user data from server to avoid stale session flags
         try {
-          const meRes = await fetch('/api/auth/me', {
+          const meRes = await fetch(`${API_URL}/api/auth/me`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (meRes.ok) {
@@ -510,70 +511,70 @@ export default function App() {
   // Targeted refresh helpers - fetch only what changed
   const fetchTasks = async () => {
     try {
-      const res = await fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/api/tasks`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setTasks(await res.json());
     } catch (e) { }
   };
 
   const fetchSubmissions = async () => {
     try {
-      const res = await fetch('/api/submissions', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/api/submissions`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setSubmissions(await res.json());
     } catch (e) { }
   };
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/api/users`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setUsers(await res.json());
     } catch (e) { }
   };
 
   const fetchHODStats = async () => {
     try {
-      const res = await fetch('/api/stats/hod', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/api/stats/hod`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setHodStats(await res.json());
     } catch (e) { }
   };
 
   const fetchAdvisorStats = async () => {
     try {
-      const res = await fetch('/api/stats/advisor', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/api/stats/advisor`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setAdvisorStats(await res.json());
     } catch (e) { }
   };
 
   const fetchCoordinatorStats = async () => {
     try {
-      const res = await fetch('/api/stats/coordinator', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/api/stats/coordinator`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setCoordinatorStats(await res.json());
     } catch (e) { }
   };
 
   const fetchMyClass = async () => {
     try {
-      const res = await fetch('/api/my-class', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/api/my-class`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setMyClass(await res.json());
     } catch (e) { }
   };
 
   const fetchYearStats = async () => {
     try {
-      const res = await fetch('/api/stats/year', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/api/stats/year`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setYearStats(await res.json());
     } catch (e) { }
   };
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch('/api/notifications', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setNotifications(await res.json());
     } catch (e) { }
   };
 
   const markNotificationsRead = async () => {
     try {
-      await fetch('/api/notifications/read', {
+      await fetch(`${API_URL}/api/notifications/read`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -583,7 +584,7 @@ export default function App() {
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/auth/change-password', {
+    const res = await fetch(`${API_URL}/api/auth/change-password`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ newPassword })
@@ -693,7 +694,7 @@ export default function App() {
           return;
         }
 
-        const res = await fetch('/api/students/bulk', {
+        const res = await fetch(`${API_URL}/api/students/bulk`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ students })
@@ -720,7 +721,7 @@ export default function App() {
 
   const fetchStudentStats = async () => {
     try {
-      const res = await fetch('/api/stats/student', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/api/stats/student`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setStudentStats(await res.json());
     } catch (e) { }
   };
@@ -729,7 +730,7 @@ export default function App() {
     e.preventDefault();
     setError('');
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...loginData, role: loginRole })
@@ -764,7 +765,7 @@ export default function App() {
 
   const createDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/departments', {
+    const res = await fetch(`${API_URL}/api/departments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ name: newDept })
@@ -785,7 +786,7 @@ export default function App() {
       batch: newClass.batch || myClass.batch,
     } : newClass;
 
-    const res = await fetch('/api/classes', {
+    const res = await fetch(`${API_URL}/api/classes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(payload)
@@ -794,7 +795,7 @@ export default function App() {
       setNewClass({ name: '', department_id: '', year: '', batch: '' });
       // Only re-fetch classes and my-class, not everything
       const [classesRes] = await Promise.all([
-        fetch('/api/classes', { headers: { Authorization: `Bearer ${token}` } })
+        fetch(`${API_URL}/api/classes`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
       if (classesRes.ok) setClasses(await classesRes.json());
       fetchMyClass();
@@ -817,7 +818,7 @@ export default function App() {
       email: newUser.email || null,
     };
 
-    const res = await fetch('/api/users', {
+    const res = await fetch(`${API_URL}/api/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(payload)
@@ -839,7 +840,7 @@ export default function App() {
 
   const createTask = async () => {
     try {
-      const res = await fetch('/api/tasks', {
+      const res = await fetch(`${API_URL}/api/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(newTask)
@@ -927,7 +928,7 @@ export default function App() {
       formData.append('screenshot', fileToUpload, fileForTask.name);
       formData.append('custom_field_value', customFieldValue);
 
-      const res = await fetch('/api/submissions', {
+      const res = await fetch(`${API_URL}/api/submissions`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData

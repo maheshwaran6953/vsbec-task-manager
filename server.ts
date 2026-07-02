@@ -202,7 +202,10 @@ async function startServer() {
 
   app.use('/api/', apiLimiter);
   app.use(express.json());
-  app.use(cors());
+  app.use(cors({
+    origin: process.env.FRONTEND_URL || '*',
+    credentials: true
+  }));
 
   // Auth Middleware
   const authenticate = (req: any, res: any, next: any) => {

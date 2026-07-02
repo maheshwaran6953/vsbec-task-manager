@@ -80,62 +80,86 @@ Every level has visibility into the layer directly below it and can roll up stat
 
 ## Deployment & Hosting Guide 🌍
 
-This project uses a single-server architecture where the Express backend serves the Vite frontend. It is pre-configured to be deployed natively on **Render**, or serverlessly on **Vercel**.
-
-### Step 1: Environment Variables Configuration
-Regardless of where you host, you **MUST** configure these Environment Variables in your hosting dashboard prior to deploying. Do not skip this:
-
-| Key | Example Value | Description |
-| :--- | :--- | :--- |
-| **`NODE_ENV`** | `production` | Tells Express to serve the built frontend from `/dist`. |
-| **`MONGODB_URI`** | `mongodb+srv://...` | Your production MongoDB connection string. |
-| **`JWT_SECRET`** | `your_secure_random_string` | Used to sign login tokens. Make it long and random. |
-| **`CLOUDINARY_CLOUD_NAME`** | `xxx` | From your Cloudinary dashboard. |
-| **`CLOUDINARY_API_KEY`** | `123...` | From your Cloudinary dashboard. |
-| **`CLOUDINARY_API_SECRET`** | `xyz...` | From your Cloudinary dashboard. |
-
-> **MongoDB Note:** Ensure your MongoDB Atlas cluster has **Network Access** set to `0.0.0.0/0` (Allow Access from Anywhere) so your hosting platform can connect.
+> **Recommended:** Host the Backend on **Render** and the Frontend separately on **Vercel**. This gives you a fast CDN-served UI + a stable always-on server.
 
 ---
 
-### Option A: Hosting on Vercel (Fastest Serverless Hosting)
+### ✅ RECOMMENDED: Split Deployment — Vercel (Frontend) + Render (Backend)
 
-Vercel is optimized for frontend frameworks but supports our Express backend via Serverless Functions configured in `vercel.json`.
+#### Step 1: Deploy Backend on Render
 
-1. **Push to GitHub**: Make sure this codebase (including `vercel.json`) is pushed to a GitHub repository.
-2. **Import Project**: Go to [Vercel](https://vercel.com/), click **Add New -> Project**, and import your repository.
-3. **Configure Project**:
-   - **Framework Preset**: Leave as `Other` or `Vite`.
+1. Go to [Render.com](https://render.com/) → **New + > Web Service**
+2. Connect your GitHub repo and select the `main` branch
+3. Configure:
+   - **Environment**: `Node`
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm start`
+4. Add these **Environment Variables** in Render's dashboard:
+
+| Key | Value |
+| :--- | :--- |
+| `NODE_ENV` | `production` |
+| `MONGODB_URI` | `mongodb+srv://...` |
+| `JWT_SECRET` | `your_long_random_secret` |
+| `CLOUDINARY_CLOUD_NAME` | From Cloudinary dashboard |
+| `CLOUDINARY_API_KEY` | From Cloudinary dashboard |
+| `CLOUDINARY_API_SECRET` | From Cloudinary dashboard |
+| `FRONTEND_URL` | Your Vercel URL e.g. `https://vsbec.vercel.app` |
+
+5. Click **Save** and wait for the deployment. Copy your backend URL e.g., `https://vsbec-backend.onrender.com`
+
+> **MongoDB Note:** In MongoDB Atlas → Network Access → Add IP: `0.0.0.0/0` so Render can connect.
+
+---
+
+#### Step 2: Deploy Frontend on Vercel
+
+1. Go to [Vercel.com](https://vercel.com/) → **Add New > Project**
+2. Import your GitHub repo
+3. Configure:
+   - **Framework Preset**: `Vite`
    - **Build Command**: `npm run build`
    - **Output Directory**: `dist`
-   - **Environment Variables**: Add all the variables listed in Step 1.
-4. **Deploy**: Click Deploy. Vercel will build the frontend into `dist` and deploy `server.ts` as a serverless function that handles your `/api` routes and serves the frontend.
+4. Add this **Environment Variable** in Vercel's dashboard:
+
+| Key | Value |
+| :--- | :--- |
+| `VITE_API_BASE_URL` | Your Render backend URL e.g., `https://vsbec-backend.onrender.com` |
+
+5. Click **Deploy**. Vercel will build the Vite frontend and serve it globally.
 
 ---
 
-### Option B: Hosting on Render (Standard Node Environment)
+#### How It Works
 
-Render works like a traditional server. It will run the Node process continuously.
+```
+User Browser  →  Vercel CDN (React frontend)
+                       ↓ API calls
+              Render Server (Express backend)
+                       ↓
+              MongoDB Atlas + Cloudinary
+```
 
-1. **Create a Render Account**: Go to [Render.com](https://render.com/) and sign up.
-2. **Create a Web Service**: Click **New +** > **Web Service**. Connect your GitHub and select the repository.
-3. **Configure the Service**:
-   - **Name**: Choose a name (e.g., `vsbec-task-manager`).
-   - **Environment**: `Node`
-   - **Branch**: `main`
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `npm start`
-4. **Environment Variables**: Click "Environment" and add all the variables from Step 1.
-5. **Deploy**: Click Save. Render will run the build command and start the server using the `start` script defined in `package.json`.
+All API calls in the frontend automatically prepend `VITE_API_BASE_URL` before hitting `/api/...`, so the deployed Vercel app contacts your Render server for all data.
 
 ---
 
-### First Production Login
-When the server spins up for the first time on a fresh database, it will automatically run the seeder script. You can log in with the default admin:
+### 🔄 Alternative: Single Server on Render
+
+If you want everything in one place (simpler), configure Render with:
+- **Build Command**: `npm install && npm run build`
+- **Start Command**: `npm start`
+- Set `NODE_ENV=production` and it will serve the built frontend from `/dist`.
+
+---
+
+### 🔐 First Production Login
+The seeder runs automatically on a fresh database:
 - **Username**: `admin`
 - **Password**: `admin123`
 
-*⚠️ It is highly recommended to change this password immediately after logging into your production system!*
+*⚠️ Change this password immediately after your first production login!*
 
 ---
 *Built for VSBEC Academic Management.*
+
