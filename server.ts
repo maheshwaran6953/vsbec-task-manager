@@ -177,43 +177,24 @@ async function seedData() {
   if (emptyEmailFix.modifiedCount > 0)
     console.log(`Fixed ${emptyEmailFix.modifiedCount} users by removing empty/null email`);
 
-  // Robust Migration: Trim all usernames and register numbers
-  const allUsers = await User.find({ role: { $in: ['STUDENT', 'CLASS_ADVISOR', 'HOD'] } });
-  let trimFixCount = 0;
-  let passSyncCount = 0;
-  for (const u of allUsers) {
-    let changed = false;
-    const strippedUsername = u.username.trim();
-    if (u.username !== strippedUsername) {
-      u.username = strippedUsername;
-      changed = true;
-    }
-    if (u.register_number && u.register_number !== u.register_number.trim()) {
-      u.register_number = u.register_number.trim();
-      changed = true;
-    }
+  // Nuclear Migration: Force sync passwords for students stuck in "must_change" mode
+  const stickies = await User.find({ role: 'STUDENT', must_change_password: { $ne: false } });
+  let stickyCount = 0;
+  for (const u of stickies) {
+    const trimmedRegNo = (u.register_number || u.username || '').trim();
+    if (!trimmedRegNo) continue;
 
-    // DEEP SYNC: If it's a student who hasn't changed their password yet,
-    // re-sync the password with their (now trimmed) register_number.
-    if (u.role === 'STUDENT' && (u.must_change_password === true || u.must_change_password === undefined)) {
-      const expectedPass = u.register_number || u.username;
-      // Only re-hash if it's actually different or if they were missing the flag
-      if (u.must_change_password === undefined) {
-        u.must_change_password = true;
-        changed = true;
-      }
-      // Force re-hash once to ensure it matches the trimmed reg_no
-      u.password = expectedPass; // Schema pre-save will hash this
-      changed = true;
-      passSyncCount++;
-    }
-
-    if (changed) {
-      await u.save();
-      trimFixCount++;
-    }
+    // Use manual hash + direct update to bypass all hooks and ensure clean data
+    const forcedHash = bcrypt.hashSync(trimmedRegNo, 10);
+    await User.findByIdAndUpdate(u._id, {
+      username: trimmedRegNo,
+      register_number: trimmedRegNo,
+      password: forcedHash,
+      must_change_password: true
+    });
+    stickyCount++;
   }
-  if (trimFixCount > 0) console.log(`Cleaned up data (trimmed) for ${trimFixCount} users. Password re-sync for ${passSyncCount} students.`);
+  if (stickyCount > 0) console.log(`[AUTH] Nuclear Sync: Force-reset credentials for ${stickyCount} students.`);
 
   const adminExists = await User.findOne({ role: 'SUPREME_ADMIN' });
   if (!adminExists) {
@@ -288,14 +269,16 @@ async function startServer() {
     });
 
     if (!user) {
-      console.log(`Login Failed: User not found for ${username}`);
+      console.log(`[AUTH] Failure: User not found [${username}]`);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     if (!bcrypt.compareSync(password, user.password)) {
-      console.log(`Login Failed: Password mismatch for ${username}`);
+      console.log(`[AUTH] Failure: Password mismatch for ${username}. Input: [${password.substring(0, 1)}***], DB Hash exists: ${!!user.password}`);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+
+    console.log(`[AUTH] Success: ${username} logged in as ${user.role}`);
 
     if (role) {
       if (role === 'STUDENT_COORDINATOR') {
@@ -1224,6 +1207,23 @@ async function startServer() {
       }
       res.status(500).json({ success: false, message: err.message, hint });
     }
+  });
+
+  // ── Admin Rescue Tools ──────────────────────────────────────────────────────
+  app.get('/api/admin/check-user/:regNo', authenticate, authorize(['SUPREME_ADMIN']), async (req: any, res) => {
+    const regNo = req.params.regNo.trim();
+    const user = await User.findOne({ $or: [{ username: regNo }, { register_number: regNo }] });
+    if (!user) return res.json({ exists: false });
+    res.json({
+      exists: true,
+      id: user._id,
+      username: user.username,
+      register_number: user.register_number,
+      role: user.role,
+      must_change_password: user.must_change_password,
+      has_password: !!user.password,
+      created_at: (user as any).createdAt
+    });
   });
 
   // ── Vite Middleware ───────────────────────────────────────────────────────
