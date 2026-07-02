@@ -21,9 +21,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key';
 
 // ─── Cloudinary Config & Diagnostics ──────────────────────────────────────────
 const cloudinaryConfig = {
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+  cloud_name: (process.env.CLOUDINARY_CLOUD_NAME || '').trim(),
+  api_key: (process.env.CLOUDINARY_API_KEY || '').trim(),
+  api_secret: (process.env.CLOUDINARY_API_SECRET || '').trim(),
 };
 
 // Diagnostic logging (visible in Render logs)
@@ -32,7 +32,7 @@ console.log("Cloud Name:", cloudinaryConfig.cloud_name || "MISSING");
 console.log("API Key:", cloudinaryConfig.api_key ? "SET (****)" : "MISSING");
 console.log("API Secret:", cloudinaryConfig.api_secret ? `SET (Length: ${cloudinaryConfig.api_secret.length})` : "MISSING");
 if (cloudinaryConfig.api_secret && (cloudinaryConfig.api_secret.includes(' ') || cloudinaryConfig.api_secret.includes('\n'))) {
-  console.warn("WARNING: Cloudinary API Secret contains whitespace/newlines!");
+  console.warn("WARNING: Cloudinary API Secret contains whitespace/newlines! Trimming applied.");
 }
 console.log("-----------------------------");
 
@@ -437,7 +437,7 @@ async function startServer() {
       deptId = req.user.department_id;
     }
 
-    const finalPassword = password || register_number || username;
+    const finalPassword = (password || register_number || username || "").toString().trim();
     const mustChange = (req.user.role === 'CLASS_ADVISOR' || userRole === 'STUDENT') ? true : false;
 
     try {
@@ -1152,7 +1152,8 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (fs.existsSync(path.join(__dirname, 'dist'))) {
+    // Only serve frontend if it exists locally (not needed for Render + Vercel stack)
     app.use(express.static(path.join(__dirname, 'dist')));
     app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist/index.html')));
   }
