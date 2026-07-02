@@ -192,26 +192,22 @@ async function seedData() {
           }
         }
 
-        // 3. Password Alignment: Surgical Sync
-        // We only reset passwords for students who have NOT finalized their account yet.
-        // For non-students (Advisors, HODs), we never touch their password if they exist.
+        // 3. Password Alignment: Surgical Sync for ALL ROLES
+        // We ensure ANY user who hasn't finalized their account yet gets a valid default password.
         if (u.username !== 'admin') {
-          const isStudent = u.role === 'STUDENT';
-
-          // Only reset if:
-          // A) it's a student and they haven't explicitly set their password yet (must_change_password is true or missing)
-          // B) it's any user whose password flag is missing (ensures new imports are captured)
+          // If must_change_password is NOT false, they are in a "default" or "reset" state.
           const needsSync = (u.must_change_password !== false);
 
-          if (isStudent && needsSync) {
+          if (needsSync) {
             const defaultPass = cleanRegNo || cleanUsername;
             if (defaultPass) {
               const newHash = bcrypt.hashSync(defaultPass, 10);
               // Only update if current hash doesn't match the default (prevents re-hashing loops)
-              if (!bcrypt.compareSync(defaultPass, u.password)) {
+              if (!bcrypt.compareSync(defaultPass, u.password || '')) {
                 u.password = newHash;
                 u.must_change_password = true;
                 changed = true;
+                console.log(`[SYNC] Initialized password for ${u.role}: ${u.username}`);
               }
             }
           }
@@ -335,25 +331,24 @@ async function startServer() {
     console.log(`[AUTH] Success: ${username} logged in as ${user.role}`);
 
     if (role) {
-      console.log(`[AUTH] Validating role ${role} for user ${user.username} (Role: ${user.role}, Coordinator: ${user.is_coordinator})`);
-      if (role === 'STUDENT_COORDINATOR') {
-        if (user.role !== 'STUDENT' || !user.is_coordinator) {
-          console.log(`[AUTH] Role Fail: User is ${user.role}, is_coordinator: ${user.is_coordinator}`);
-          return res.status(403).json({ error: 'This account is not registered as a Coordinator' });
-        }
-      } else if (role === 'STUDENT') {
-        if (user.role !== 'STUDENT') {
-          console.log(`[AUTH] Role Fail: Expected STUDENT, got ${user.role}`);
-          return res.status(403).json({ error: 'This account is not registered as a Student' });
-        }
-      } else if (user.role !== role) {
-        console.log(`[AUTH] Role Fail: Expected ${role}, got ${user.role}`);
-        const roleMap: Record<string, string> = {
+      console.log(`[AUTH] Role check for ${username}: Requested [${role}] | DB User has [${user.role}] (isCoord: ${user.is_coordinator})`);
+
+      let roleAllowed = false;
+      if (role === 'SUPREME_ADMIN' && user.role === 'SUPREME_ADMIN') roleAllowed = true;
+      else if (role === 'HOD' && user.role === 'HOD') roleAllowed = true;
+      else if (role === 'CLASS_ADVISOR' && user.role === 'CLASS_ADVISOR') roleAllowed = true;
+      else if (role === 'STUDENT' && user.role === 'STUDENT') roleAllowed = true;
+      else if (role === 'STUDENT_COORDINATOR' && user.role === 'STUDENT' && user.is_coordinator) roleAllowed = true;
+
+      if (!roleAllowed) {
+        console.log(`[AUTH] Role Mismatch: ${username} attempted as ${role}`);
+        const roleNames: any = {
           'CLASS_ADVISOR': 'Class Advisor',
           'HOD': 'Department HOD',
-          'SUPREME_ADMIN': 'Supreme Admin'
+          'SUPREME_ADMIN': 'Supreme Admin',
+          'STUDENT_COORDINATOR': 'Coordinator'
         };
-        return res.status(403).json({ error: `This account is not registered as a ${roleMap[role] || role}` });
+        return res.status(403).json({ error: `Access denied: This account is registered as a ${roleNames[user.role] || user.role}` });
       }
     }
 
