@@ -1324,11 +1324,11 @@ export default function App() {
     const isGlobal = role === 'SUPREME_ADMIN';
     const isDept = role === 'HOD';
     const isYear = role === 'YEAR_COORDINATOR';
-    const isCls = role === 'CLASS_ADVISOR' || role === 'COORDINATOR';
+    const isCls = role === 'CLASS_ADVISOR' || role === 'COORDINATOR' || role === 'STUDENT_COORDINATOR';
 
     const currentDeptId = isGlobal ? adminDeptFilter : user?.department_id?.toString();
     const currentYearScope = isYear ? Number(user?.year_scope) : null;
-    const currentClassId = isCls ? (user?.class_id || myClass?.id)?.toString() : analyzerClassFilter;
+    const currentClassId = isCls ? (user?.class_id || myClass?.id || analyzerClassFilter)?.toString() : analyzerClassFilter;
 
     const deptStudents = users.filter(u => {
       if (u.role !== 'STUDENT') return false;
@@ -3035,7 +3035,7 @@ export default function App() {
                               href={ensureExternalLink(task.external_link)}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 text-blue-600 hover:underline text-sm font-medium"
+                              className="inline-flex items-center gap-2 text-blue-600 hover:underline text-sm font-medium bg-blue-50/50 px-3 py-1.5 rounded-lg border border-blue-100"
                             >
                               <ExternalLink size={16} /> Visit External Link
                             </a>

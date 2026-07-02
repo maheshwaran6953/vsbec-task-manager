@@ -184,7 +184,6 @@ async function seedData() {
 
         if (u.register_number !== cleanRegNo) {
           if (cleanRegNo === '') {
-            // Use findByIdAndUpdate to $unset to avoid unique index collisions with ''
             await User.findByIdAndUpdate(u._id, { $unset: { register_number: "" } });
             u.register_number = undefined;
           } else {
@@ -193,22 +192,23 @@ async function seedData() {
           }
         }
 
-        // 3. Password Alignment & Force Activation
-        // If they are a student, we ALWAYS ensure they are in must_change_password state
-        // unless they have explicitly been finalized. 
-        // For security and synchronization, we reset them to their default ID-based password.
+        // 3. Password Alignment: Surgical Sync
+        // We only reset passwords for students who have NOT finalized their account yet.
+        // For non-students (Advisors, HODs), we never touch their password if they exist.
         if (u.username !== 'admin') {
           const isStudent = u.role === 'STUDENT';
-          // Force reset if:
-          // - must_change_password is true (normal case)
-          // - must_change_password is false but they are a student (Fixes the default:false bug)
-          // - must_change_password is undefined
-          if (u.must_change_password !== false || isStudent) {
+
+          // Only reset if:
+          // A) it's a student and they haven't explicitly set their password yet (must_change_password is true or missing)
+          // B) it's any user whose password flag is missing (ensures new imports are captured)
+          const needsSync = (u.must_change_password !== false);
+
+          if (isStudent && needsSync) {
             const defaultPass = cleanRegNo || cleanUsername;
             if (defaultPass) {
               const newHash = bcrypt.hashSync(defaultPass, 10);
-              // Only update if the hash is different or flag is wrong
-              if (u.password !== newHash || u.must_change_password !== true) {
+              // Only update if current hash doesn't match the default (prevents re-hashing loops)
+              if (!bcrypt.compareSync(defaultPass, u.password)) {
                 u.password = newHash;
                 u.must_change_password = true;
                 changed = true;
@@ -222,7 +222,7 @@ async function seedData() {
             username: u.username,
             register_number: u.register_number,
             password: u.password,
-            must_change_password: u.must_change_password
+            must_change_password: !!u.must_change_password
           });
           fixCount++;
         }
@@ -232,7 +232,11 @@ async function seedData() {
     }
     console.log(`[SYNC] Completed. Cleaned/Synced ${fixCount} accounts.`);
 
-    // 4. Ensure Supreme Admin exists
+    // 4. Role Audit Log
+    const roleStats = await User.aggregate([{ $group: { _id: '$role', count: { $sum: 1 } } }]);
+    console.log("[SYNC] Role distribution:", roleStats.map(s => `${s._id}: ${s.count}`).join(', '));
+
+    // 5. Ensure Supreme Admin exists
     const adminExists = await User.findOne({ role: 'SUPREME_ADMIN' });
     if (!adminExists) {
       const admin = new User({
@@ -755,7 +759,12 @@ async function startServer() {
       console.error('Task validation failed:', errorMessage, '| Body:', JSON.stringify(req.body));
       return res.status(400).json({ error: errorMessage });
     }
-    const { title, description, category, external_link, deadline, screenshot_instruction, custom_field_label, department_id, class_ids } = req.body;
+    const { title, description, category, external_link: rawLink, deadline, screenshot_instruction, custom_field_label, department_id, class_ids } = req.body;
+
+    let external_link = rawLink;
+    if (external_link && !external_link.startsWith('http')) {
+      external_link = `https://${external_link}`;
+    }
 
     if (req.user.role === 'STUDENT' && !req.user.is_coordinator)
       return res.status(403).json({ error: 'Only coordinators can post tasks' });
