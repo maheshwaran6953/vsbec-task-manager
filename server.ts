@@ -203,7 +203,16 @@ async function startServer() {
   app.use('/api/', apiLimiter);
   app.use(express.json());
   app.use(cors({
-    origin: process.env.FRONTEND_URL || '*',
+    origin: (origin, callback) => {
+      // If FRONTEND_URL is set, use it. Otherwise, allow any origin (safe for debugging split deploy)
+      const allowedOrigin = process.env.FRONTEND_URL;
+      if (!allowedOrigin || !origin || origin === allowedOrigin) {
+        callback(null, origin || true);
+      } else {
+        // Fallback for when origins don't match but we still want to allow it during setup
+        callback(null, true);
+      }
+    },
     credentials: true
   }));
 

@@ -749,7 +749,8 @@ export default function App() {
         setError(data.error || 'Failed to login');
       }
     } catch (e) {
-      setError('Connection failed');
+      setError(`Connection failed: ${e instanceof Error ? e.message : String(e)}. Check console and VITE_API_BASE_URL: ${API_URL}`);
+      console.error('Login error:', e);
     }
   };
 
