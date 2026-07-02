@@ -31,8 +31,12 @@
 
 ### Students
 - Other sections: Register number is username and password (e.g., `2023ITA001`)
-- **IT Year 3 Section C**: 63 students — `922523205126` to `922523205188`
-  - Password = Register Number (e.g., login: `922523205126` / `922523205126`)
+- **IT Year 3 Section C**: 5 students (sample data)
+  - `922523205126` / `922523205126` → **PRANESH** (Coordinator)
+  - `922523205127` / `922523205127` → **PRASHANNAA**
+  - `922523205128` / `922523205128` → **PRATAP**
+  - `922523205129` / `922523205129` → **PRAVEEN**
+  - `922523205130` / `922523205130` → **SARANYA**
 
 ---
 
