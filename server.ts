@@ -27,10 +27,11 @@ const cloudinaryConfig = {
 };
 
 // Diagnostic logging (visible in Render logs)
+const maskSecret = (s: string) => s ? `${s.substring(0, 3)}...${s.substring(s.length - 3)} (Len: ${s.length})` : "MISSING";
 console.log("--- Cloudinary Diagnostic ---");
 console.log("Cloud Name:", cloudinaryConfig.cloud_name || "MISSING");
-console.log("API Key:", cloudinaryConfig.api_key ? "SET (****)" : "MISSING");
-console.log("API Secret:", cloudinaryConfig.api_secret ? `SET (Length: ${cloudinaryConfig.api_secret.length})` : "MISSING");
+console.log("API Key:", maskSecret(cloudinaryConfig.api_key));
+console.log("API Secret:", maskSecret(cloudinaryConfig.api_secret));
 if (cloudinaryConfig.api_secret && (cloudinaryConfig.api_secret.includes(' ') || cloudinaryConfig.api_secret.includes('\n'))) {
   console.warn("WARNING: Cloudinary API Secret contains whitespace/newlines! Trimming applied.");
 }
@@ -228,7 +229,10 @@ async function startServer() {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   app.post('/api/auth/login', async (req, res) => {
-    const { username, password, role } = req.body;
+    const { username: rawUsername, password: rawPassword, role } = req.body;
+    const username = (rawUsername || '').toString().trim();
+    const password = (rawPassword || '').toString().trim();
+
     const user: any = await User.findOne({
       $or: [
         { username: { $regex: new RegExp(`^${username}$`, 'i') } },
@@ -236,7 +240,13 @@ async function startServer() {
       ],
     });
 
-    if (!user || !bcrypt.compareSync(password, user.password)) {
+    if (!user) {
+      console.log(`Login Failed: User not found for ${username}`);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    if (!bcrypt.compareSync(password, user.password)) {
+      console.log(`Login Failed: Password mismatch for ${username}`);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
