@@ -35,6 +35,12 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 
+// --- Helpers ---
+const ensureExternalLink = (url: string) => {
+  if (!url) return '';
+  return url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
+};
+
 // --- Types ---
 interface YearStats {
   total_students: number;
@@ -1711,7 +1717,7 @@ export default function App() {
                 {newTask.external_link && (
                   <div className="mb-6">
                     <a
-                      href={newTask.external_link}
+                      href={ensureExternalLink(newTask.external_link)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 text-blue-600 hover:underline text-sm font-medium"
@@ -3026,7 +3032,7 @@ export default function App() {
                         {task.external_link && (
                           <div className="mb-6">
                             <a
-                              href={task.external_link}
+                              href={ensureExternalLink(task.external_link)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-2 text-blue-600 hover:underline text-sm font-medium"

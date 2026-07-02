@@ -177,24 +177,36 @@ async function seedData() {
   if (emptyEmailFix.modifiedCount > 0)
     console.log(`Fixed ${emptyEmailFix.modifiedCount} users by removing empty/null email`);
 
-  // Nuclear Migration: Force sync passwords for students stuck in "must_change" mode
-  const stickies = await User.find({ role: 'STUDENT', must_change_password: { $ne: false } });
-  let stickyCount = 0;
-  for (const u of stickies) {
-    const trimmedRegNo = (u.register_number || u.username || '').trim();
-    if (!trimmedRegNo) continue;
+  // Universal Migration: Trim ALL usernames and Register Numbers for ALL roles
+  // Nuclear Sync: Force sync passwords for ANY user stuck in initial state (must_change_password: true)
+  const allUsers = await User.find({
+    $or: [
+      { must_change_password: { $ne: false } },
+      { register_number: { $regex: /\s/ } },
+      { username: { $regex: /\s/ } }
+    ]
+  });
 
-    // Use manual hash + direct update to bypass all hooks and ensure clean data
-    const forcedHash = bcrypt.hashSync(trimmedRegNo, 10);
-    await User.findByIdAndUpdate(u._id, {
-      username: trimmedRegNo,
-      register_number: trimmedRegNo,
-      password: forcedHash,
-      must_change_password: true
-    });
-    stickyCount++;
+  let universalFixCount = 0;
+  for (const u of allUsers) {
+    const trimmedUsername = (u.username || '').trim();
+    const trimmedRegNo = (u.register_number || '').trim() || trimmedUsername;
+
+    const updateData: any = {
+      username: trimmedUsername,
+      register_number: trimmedRegNo
+    };
+
+    // If they haven't changed their password yet, ensure it matches their trimmed ID
+    if (u.must_change_password !== false) {
+      updateData.password = bcrypt.hashSync(trimmedRegNo, 10);
+      updateData.must_change_password = true;
+    }
+
+    await User.findByIdAndUpdate(u._id, updateData);
+    universalFixCount++;
   }
-  if (stickyCount > 0) console.log(`[AUTH] Nuclear Sync: Force-reset credentials for ${stickyCount} students.`);
+  if (universalFixCount > 0) console.log(`[AUTH] Universal Sync: Cleaned credentials for ${universalFixCount} users (all roles).`);
 
   const adminExists = await User.findOne({ role: 'SUPREME_ADMIN' });
   if (!adminExists) {
